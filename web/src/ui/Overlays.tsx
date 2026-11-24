@@ -2,6 +2,7 @@ import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Lay
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, type Best } from '../types'
+import { LOCAL } from '../wire'
 import { WhenToGrow } from './Lesson'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
@@ -94,7 +95,7 @@ export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutor
         <button onClick={() => { onClose(); g.send('finish') }}><Flag size={16} aria-hidden />여기서 마치고 기록 남기기</button>
         <button onClick={() => onRestart(g.seed)}><RotateCcw size={16} aria-hidden />같은 시드로 처음부터</button>
         </>}
-        <button onClick={onHome}><House size={16} aria-hidden />{practice ? '나가기' : '나가기 (게임은 30분 동안 보관)'}</button>
+        <button onClick={onHome}><House size={16} aria-hidden />{practice ? '나가기' : LOCAL ? '나가기 (이어서 할 수 있음)' : '나가기 (게임은 30분 동안 보관)'}</button>
         <button className="primary" autoFocus onClick={onClose}><Play size={16} aria-hidden />돌아가기</button>
       </div>
     </div>

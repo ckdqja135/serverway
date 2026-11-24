@@ -3,6 +3,6 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/web" && [ -d node_modules ] || npm ci
-npm run build >/dev/null
+VITE_SERVER=1 npm run build >/dev/null
 cd "$ROOT/server" && mkdir -p ../.run && go build -o ../.run/serverway ./cmd/serverway
 SERVERWAY_WEB="$ROOT/web/dist" exec "$ROOT/.run/serverway"

@@ -6,5 +6,6 @@ process.env.VITE_SITE_URL ||= `https://${process.env.VERCEL_PROJECT_PRODUCTION_U
 
 export default defineConfig({
   plugins: [react()],
+  worker: { format: 'es' },
   server: { host: '127.0.0.1', port: 7880, strictPort: true, proxy: { '/api': 'http://127.0.0.1:7800', '/ws': { target: 'http://127.0.0.1:7800', ws: true } } },
 })

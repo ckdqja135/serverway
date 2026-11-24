@@ -8,7 +8,18 @@
     scripts/run.sh
 
 http://127.0.0.1:7800 을 엽니다. Go와 Node가 필요합니다.
-화면만 고칠 때는 서버를 켠 채 `cd web && npm run dev` 후 http://127.0.0.1:7880
+화면만 고칠 때는 `cd web && npm run dev` 후 http://127.0.0.1:7880
+
+## 배포
+
+게임 규칙(Go)은 두 곳에서 돌 수 있고, 빌드할 때 정합니다.
+
+| 빌드 | 규칙이 도는 곳 | 쓰는 때 |
+|-|-|-|
+| `npm run build` | 브라우저 안 (WebAssembly) | Vercel 같은 정적 배포. 서버가 필요 없고 이어 하기는 브라우저에 저장 |
+| `VITE_SERVER=1 npm run build` | Go 서버 | `scripts/run.sh`. 판정을 서버가 함 |
+
+Vercel에는 `web` 폴더를 올립니다. 규칙 코드나 `balance.json`을 바꾸면 `scripts/wasm.sh`를 실행해 `web/src/wasm`을 다시 만들어야 하고, 잊으면 `go test ./...`가 실패합니다.
 
 ## 튜토리얼
 
@@ -60,7 +71,9 @@ http://127.0.0.1:7800 을 엽니다. Go와 Node가 필요합니다.
 |-|-|
 | server/internal/sim | 네트워크 없이 동작하는 게임 규칙 |
 | server/internal/game | 세션, WebSocket, 변경분 전송 |
-| web/src/client.ts | 서버 상태 보관과 화면 시계 |
+| server/cmd/wasm, web/src/worker.ts | 브라우저 안에서 규칙 실행 |
+| web/src/wire.ts | 규칙이 도는 곳과 주고받는 길 (워커 또는 WebSocket) |
+| web/src/client.ts | 게임 상태 보관과 화면 시계 |
 | web/src/board.ts | Canvas 보드 |
 | web/src/ui | React HUD와 패널 |
 | web/src/guard.ts | 우클릭과 개발자 도구 단축키 막기 (빌드한 화면에서만) |

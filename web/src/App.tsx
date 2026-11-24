@@ -8,8 +8,8 @@ import { Help, Menu, ResultModal, RewardModal } from './ui/Overlays'
 import { LessonCard, LessonEnd, LessonIntro, learned, setLearned, useLesson } from './ui/Lesson'
 import { Panel } from './ui/Panel'
 import { Start } from './ui/Start'
+import { LOCAL, host } from './wire'
 
-const KEY = 'serverway.session'
 const pref = (k: string, d: boolean) => (localStorage.getItem(k) ?? String(d)) === 'true'
 
 export function App() {
@@ -20,7 +20,7 @@ export function App() {
   const [seed, setSeed] = useState<number>()
 
   const check = async () => {
-    const id = sessionStorage.getItem(KEY)
+    const id = host.last()
     setResumeId(id && (await GameClient.exists(id).catch(() => false)) ? id : null)
   }
   useEffect(() => { check() }, [])
@@ -31,7 +31,6 @@ export function App() {
     setBusy(true); setError(''); setSeed(s)
     try {
       const id = await GameClient.create(s, practice)
-      if (!practice) sessionStorage.setItem(KEY, id)
       setGame(new GameClient(id))
     } catch (e) { setGame(null); setError((e as Error).message || '게임 서버에 연결할 수 없습니다') } finally { setBusy(false) }
   }
@@ -161,7 +160,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
       </>}
       {g.status !== 'open' && <div className="veil"><div className="modal small center">
         <WifiOff size={26} aria-hidden />
-        {g.status === 'ended' ? <><h2>게임이 만료되었습니다</h2><button className="primary" onClick={onHome}>처음으로</button></> : <><h2>{g.status === 'lost' ? '연결이 끊겼습니다' : '연결하는 중입니다'}</h2><p className="muted">{g.status === 'lost' ? '게임은 멈춰 있습니다. 다시 연결하면 그대로 이어집니다.' : ''}</p></>}
+        {g.status === 'ended' ? <><h2>{LOCAL ? '규칙이 바뀌어 이어서 할 수 없습니다' : '게임이 만료되었습니다'}</h2><button className="primary" onClick={onHome}>처음으로</button></> : <><h2>{g.status === 'lost' ? (LOCAL ? '게임을 불러오지 못했습니다' : '연결이 끊겼습니다') : '불러오는 중입니다'}</h2><p className="muted">{g.status === 'lost' ? (LOCAL ? '잠시 뒤 다시 시도합니다.' : '게임은 멈춰 있습니다. 다시 연결하면 그대로 이어집니다.') : ''}</p></>}
       </div></div>}
     </div>
   )

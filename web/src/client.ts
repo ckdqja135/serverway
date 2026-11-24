@@ -1,4 +1,5 @@
 import { FAIL, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Result } from './types'
+import { host, type Wire } from './wire'
 
 export interface Dot { id: number; link: number; lane: 0 | 1; dep: number; arr: number; stage: number; strand: number; p: number }
 export interface Fx { kind: 'done' | 'fail' | 'cache' | 'spawn' | 'up'; x: number; y: number; at: number; text?: string }
@@ -36,7 +37,7 @@ export class GameClient {
   flip = false // 세로 화면에서는 x와 y를 바꿔 보여 준다
   dotPos: (d: Dot) => { x: number; y: number } | null = () => null
 
-  private ws?: WebSocket
+  private wire?: Wire
   private seq = 0
   private queue: GEvent[] = []
   private where = new Map<number, Dot>()
@@ -51,49 +52,44 @@ export class GameClient {
   constructor(readonly id: string) { this.open() }
 
   static async create(seed?: number, practice = false): Promise<string> {
-    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed: seed ?? 0, practice }) })
-    const d = await r.json().catch(() => null)
-    if (!d) throw new Error('게임 서버에 연결할 수 없습니다')
-    if (!r.ok) throw new Error(d.error)
-    return d.id
+    return host.create(seed ?? 0, practice)
   }
-  static async exists(id: string) { return (await fetch(`/api/sessions/${id}`)).ok }
+  static exists(id: string) { return host.exists(id) }
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn) } }
   getVersion = () => this.version
   private changed() { this.version++; this.listeners.forEach((f) => f()) }
 
-  close() { this.closed = true; clearTimeout(this.retry); this.ws?.close() }
+  close() { this.closed = true; clearTimeout(this.retry); this.wire?.close() }
 
   private open() {
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?id=${this.id}`)
-    this.ws = ws
-    ws.onmessage = (e) => { if (this.ws === ws) this.receive(JSON.parse(e.data)) }
-    ws.onclose = async () => {
-      if (this.closed || this.ws !== ws) return
-      this.status = 'lost'
+    const wire = host.open(this.id, (m) => { if (this.wire === wire) this.receive(m) }, (ended) => {
+      if (this.closed || this.wire !== wire) return
+      this.status = ended ? 'ended' : 'lost'
       this.changed()
+      if (ended) return
       this.retry = window.setTimeout(async () => {
         const ok = await GameClient.exists(this.id).catch(() => null)
         if (this.closed) return
         if (ok === false) { this.status = 'ended'; this.changed() } else this.open()
       }, 1200)
-    }
+    })
+    this.wire = wire
   }
 
   send(type: string, body: Record<string, number | boolean | string> = {}): Promise<Ack> {
-    if (this.status !== 'open' || !this.ws) {
+    if (this.status !== 'open' || !this.wire) {
       this.say('게임 서버와 다시 연결하는 중입니다', true)
       return Promise.resolve({ seq: 0, ok: false, tick: 0 })
     }
     if (type === 'speed') this.head = { ...this.head, speed: Number(body.speed) } // 빠르게 눌러도 이어지도록 표시만 먼저 바꾼다
     const seq = ++this.seq
-    this.ws.send(JSON.stringify({ epoch: this.epoch, seq, type, ...body }))
+    this.wire.send(JSON.stringify({ epoch: this.epoch, seq, type, ...body }))
     return new Promise((res) => this.waits.set(seq, (a) => { if (!a.ok && a.error) this.say(a.error, true); res(a) }))
   }
 
   restart(seed?: number) {
-    if (this.status === 'open') this.ws?.send(JSON.stringify({ epoch: this.epoch, seq: ++this.seq, type: 'restart', seed: seed ?? 0 }))
+    if (this.status === 'open') this.wire?.send(JSON.stringify({ epoch: this.epoch, seq: ++this.seq, type: 'restart', seed: seed ?? 0 }))
   }
 
   say(text: string, bad = false) { this.notice = { text, bad, id: ++this.noticeId }; this.changed() }

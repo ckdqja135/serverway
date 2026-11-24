@@ -1,3 +1,5 @@
+//go:build !js
+
 package game
 
 import (
@@ -131,15 +133,7 @@ func serveWS(m *Manager, w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
-		var in struct {
-			Epoch int    `json:"epoch"`
-			Seed  uint64 `json:"seed"`
-			sim.Command
-		}
-		if json.Unmarshal(b, &in) != nil {
-			continue
-		}
-		if !post(ctx, s.cmds, inbound{c, in.Epoch, in.Command, in.Seed}) {
+		if in, ok := decode(c, b); ok && !post(ctx, s.cmds, in) {
 			return
 		}
 	}

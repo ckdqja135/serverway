@@ -1,0 +1,53 @@
+package game
+
+import (
+	"context"
+	"fmt"
+
+	"serverway/internal/sim"
+)
+
+const maxSaveTick = 24 * 3600 * sim.TPS
+
+// Save는 판을 다시 계산해 이어 하는 데 필요한 기록이다.
+type Save struct {
+	Seed  uint64         `json:"seed"`
+	Tick  int            `json:"tick"`
+	Score int            `json:"score"`
+	Log   []sim.LogEntry `json:"log"`
+}
+
+// Local은 통신 없이 세션 하나를 돌린다. 브라우저 안에서 쓴다.
+type Local struct {
+	s *Session
+	c *Client
+}
+
+// OpenLocal은 새 판을 열거나 기록을 다시 계산해 이어 연다. 규칙이 바뀌어 결과가 달라지면 이어 하지 않는다.
+func OpenLocal(ctx context.Context, cfg *sim.Config, seed uint64, save *Save) (*Local, error) {
+	s := newSession(cfg, seed)
+	if save != nil {
+		if save.Tick < 0 || save.Tick > maxSaveTick {
+			return nil, fmt.Errorf("저장된 기록이 올바르지 않습니다")
+		}
+		s.sim = sim.Replay(cfg, save.Seed, save.Log, save.Tick)
+		if s.sim.Tick != save.Tick || s.sim.Score != save.Score {
+			return nil, fmt.Errorf("저장된 기록을 이어 할 수 없습니다")
+		}
+		s.sim.Paused, s.sim.Started = true, true
+	}
+	l := &Local{s, NewClient()}
+	go s.run(ctx, func() {})
+	if !post(ctx, s.join, l.c) {
+		return nil, ctx.Err()
+	}
+	return l, nil
+}
+
+func (l *Local) Out() <-chan []byte { return l.c.Out }
+
+func (l *Local) Send(ctx context.Context, b []byte) {
+	if in, ok := decode(l.c, b); ok {
+		post(ctx, l.s.cmds, in)
+	}
+}

@@ -57,6 +57,19 @@ type inbound struct {
 	seed  uint64
 }
 
+// decode는 화면이 보낸 명령 하나를 읽는다.
+func decode(c *Client, b []byte) (inbound, bool) {
+	var in struct {
+		Epoch int    `json:"epoch"`
+		Seed  uint64 `json:"seed"`
+		sim.Command
+	}
+	if json.Unmarshal(b, &in) != nil {
+		return inbound{}, false
+	}
+	return inbound{c, in.Epoch, in.Command, in.Seed}, true
+}
+
 func randomSeed() uint64 {
 	var b [8]byte
 	rand.Read(b[:])
@@ -159,6 +172,10 @@ func (s *Session) handle(in inbound) {
 		s.epoch++
 		s.sim, s.why = sim.New(s.cfg, seed), ""
 		s.snapshot()
+		return
+	}
+	if in.cmd.Type == "save" {
+		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.sim.Tick, s.sim.Score, s.sim.Log}})
 		return
 	}
 	a := s.sim.Apply(in.cmd)
