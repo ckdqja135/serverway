@@ -30,12 +30,13 @@ function Meter({ label, value, max, tone }: { label: string; value: number; max:
   return <div className="meter"><span>{label}<b>{value} / {max}</b></span><div className="bar"><i className={p >= 0.8 ? 'bad' : p >= 0.5 ? 'warn' : tone} style={{ width: `${p * 100}%` }} /></div></div>
 }
 
-function Upgrade({ g, cost, level, onClick, children }: { g: GameClient; cost: number; level: number; onClick: () => void; children: React.ReactNode }) {
+function Upgrade({ g, cost, level, onClick, gains }: { g: GameClient; cost: number; level: number; onClick: () => void; gains: [string, string][] }) {
   const [busy, setBusy] = useState(false)
   const short = cost - g.head.budget
   return (
     <button className="upgrade" disabled={short > 0 || busy || !!g.head.over} onClick={() => { setBusy(true); onClick(); setTimeout(() => setBusy(false), 250) }}>
-      <ArrowUp size={17} aria-hidden /><span><b>Lv{level + 2}로 업그레이드</b>{children}</span><em>{short > 0 ? `${short} 부족` : cost}</em>
+      <ArrowUp size={17} aria-hidden /><b>Lv{level + 2}로 업그레이드</b><em>{short > 0 ? `${short} 부족` : cost}</em>
+      <span className="gains">{gains.map(([k, v]) => <span key={k}><small>{k}</small>{v}</span>)}</span>
     </button>
   )
 }
@@ -68,9 +69,8 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
         <Row k="처리한 요청" v={n.done} />
         {n.kind === API && g.head.cache > 0 && <Row k="캐시 적중" v={`${g.head.cache}%`} />}
       </dl>
-      {!n.draining && <Upgrade g={g} cost={n.upgrade} level={n.level} onClick={() => g.send('upgradeNode', { id: n.id })}>
-        {n.next && `초당 ${perSec(n.slots, n.procMs)} → ${perSec(n.next.slots, n.next.procMs)}개, 대기열 ${n.limit} → ${n.next.limit}`}
-      </Upgrade>}
+      {!n.draining && <Upgrade g={g} cost={n.upgrade} level={n.level} onClick={() => g.send('upgradeNode', { id: n.id })}
+        gains={n.next ? [['초당 처리', `${perSec(n.slots, n.procMs)} → ${perSec(n.next.slots, n.next.procMs)}`], ['대기열', `${n.limit} → ${n.next.limit}`]] : []} />}
     </>
   )
 }
@@ -87,7 +87,7 @@ function LinkInfo({ g, l }: { g: GameClient; l: GLink }) {
       <Meter label="전송 용량 (한 차선, 초당)" value={l.used} max={l.cap} tone="peri" />
       <Meter label="링크 위에 있는 요청" value={l.moving[0]} max={l.room} tone="coral" />
       <dl><Row k="돌아오는 응답" v={l.moving[1]} /><Row k="이동 시간 (편도)" v={`${(l.travel / g.config.tps).toFixed(1)}s`} /><Row k="나가려고 기다림" v={l.waiting} w={l.waiting > 1} /><Row k="지나간 요청" v={l.passed} /></dl>
-      {!l.draining && <Upgrade g={g} cost={l.upgrade} level={l.level} onClick={() => g.send('upgradeLink', { id: l.id })}>초당 {l.cap} → {l.nextCap}개</Upgrade>}
+      {!l.draining && <Upgrade g={g} cost={l.upgrade} level={l.level} onClick={() => g.send('upgradeLink', { id: l.id })} gains={[['초당 전송', `${l.cap} → ${l.nextCap}`]]} />}
     </>
   )
 }

@@ -69,7 +69,11 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   const step = useTutorial(g)
   const lesson = useLesson(g, overlay || hidden)
   const tips = tutorial && !lesson
-  if (board.current) board.current.ui = { selection: sel, tool, hint: (lesson ? lesson.step?.hint?.(g) : tips && step?.hint) || null }
+  const hint = (lesson ? lesson.step?.hint?.(g) : tips && step?.hint) || null
+  if (board.current) board.current.ui = { selection: sel, tool, hint }
+  // 업그레이드 버튼은 안내한 대상을 골랐을 때만 강조한다.
+  const aimed = !!sel && !!hint && sel.id === (sel.type === 'node' ? hint.node : hint.link)
+  const focus = lesson?.step?.focus === 'upgrade' && !aimed ? undefined : lesson?.step?.focus
 
   // 메뉴가 열리거나 창이 가려지면 게임을 멈춘다.
   useEffect(() => { if (overlay && g.ready && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }, [overlay])
@@ -116,7 +120,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   const count = (k: number) => [...g.nodes.values()].filter((n) => n.kind === k).length
 
   return (
-    <div className="game" data-focus={lesson?.step?.focus}>
+    <div className="game" data-focus={focus}>
       <canvas ref={cv} aria-label="게임 보드" />
       {h && <>
         <Hud g={g} onMenu={() => setMenu(true)} onFocus={focusFault} />
