@@ -9,6 +9,7 @@ const C = {
   amber: '#e39a00', red: '#e0404a', tube: '#ffffff', tubeEdge: '#a7b2e8', violet: '#8c5be8',
 }
 const MAX_DOTS = 420
+const MAX_CELL = 60 // 큰 화면에서 작은 판이 지나치게 커지지 않게 하는 한 칸의 크기
 
 // Hint는 안내 표시다. drag는 끌어서 이을 두 노드, 나머지는 눌러야 할 대상이다.
 export interface Hint { drag?: [number, number]; node?: number; link?: number; spot?: { x: number; y: number } }
@@ -118,8 +119,8 @@ export class Board {
     this.top += ((compact ? Math.max(60, this.cover) : 104) - this.top) * ease
     this.bottom += ((compact ? Math.max(tall ? 92 : 10, this.under) : 104) - this.bottom) * ease
     const usable = w - left - this.right, room = h - this.top - this.bottom
-    const S = Math.max(4, Math.min(usable / this.cam.w, room / this.cam.h))
-    this.fit = { S, cx: left + usable / 2, cy: this.top + room / 2, max: Math.max(1, 60 / S) }
+    const S = Math.max(4, Math.min(MAX_CELL, usable / this.cam.w, room / this.cam.h))
+    this.fit = { S, cx: left + usable / 2, cy: this.top + room / 2, max: Math.max(1, MAX_CELL / S) }
     const v = this.view
     v.z = Math.min(this.fit.max, Math.max(1, v.z))
     this.S = S * v.z
