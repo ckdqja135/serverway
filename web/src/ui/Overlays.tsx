@@ -74,6 +74,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
   return (
     <div className="veil" role="dialog" aria-modal aria-label="결과">
       <div className="modal result">
+        <div className="half">
         <span className={`outcome ${r.over === 'done' ? 'good' : 'bad'}`}>{r.over === 'done' ? <Flag size={18} aria-hidden /> : <CircleX size={18} aria-hidden />}{r.over === 'done' ? '마라톤을 마쳤습니다' : '서비스가 멈췄습니다'}</span>
         <h2>{clockText(r.seconds)} 동안 달려 {r.rank}까지 키웠습니다</h2>
         <div className="score">{r.score.toLocaleString()}<small>점</small></div>
@@ -83,12 +84,15 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
           <div><span>최고 처리량</span><b>{(r.peakRps / 10).toFixed(1)}/s</b></div><div><span>클라이언트</span><b>{r.sources}개</b></div>
           <div><span>서버 / DB / 링크</span><b>{r.apis} / {r.dbs} / {r.links}</b></div><div><span>최대 정체</span><b>{r.peakWait}개</b></div>
         </div>
+        </div>
+        <div className="half">
         <h3>실패한 요청 {total}개</h3>
-        {FAIL.map((f, i) => (
+        <div className="failbars">{FAIL.map((f, i) => (
           <div key={f.code} className="failbar"><span><b>{f.code}</b> {f.name}</span><div className="bar"><i className="bad" style={{ width: total ? `${(r.failures[i] / total) * 100}%` : 0 }} /></div><em>{r.failures[i]}</em></div>
-        ))}
+        ))}</div>
         {r.faults.length > 0 && <p className="muted">겪은 장애: {r.faults.map((f) => `${FAULT_TEXT[f.type].title} ${f.count}번 (실패 ${f.failed})`).join(', ')}</p>}
         <p className="advice"><Gauge size={17} aria-hidden />{r.advice}</p>
+        </div>
         <div className="row">
           <button onClick={onHome}><House size={16} aria-hidden />처음으로</button>
           <button onClick={() => onRestart(r.seed)}><RotateCcw size={16} aria-hidden />같은 시드 {r.seed}</button>
@@ -96,7 +100,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
           <button className="primary" onClick={() => onRestart()}><Shuffle size={16} aria-hidden />새 시드로 다시</button>
         </div>
         {note && <p role="status">{note}</p>}
-        <p className="fine">시드는 운을 정하는 번호입니다.<br />같은 시드는 이번 판과 같은 운으로, 새 시드는 새로운 운으로 시작합니다.</p>
+        <p className="fine">시드는 운을 정하는 번호입니다.<span> 같은 시드는 이번 판과 같은 운으로, 새 시드는 새로운 운으로 시작합니다.</span></p>
       </div>
     </div>
   )
