@@ -57,7 +57,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
         <span className={`outcome ${r.over === 'done' ? 'good' : 'bad'}`}>{r.over === 'done' ? <Flag size={18} aria-hidden /> : <CircleX size={18} aria-hidden />}{r.over === 'done' ? '마라톤을 마쳤습니다' : '서비스가 멈췄습니다'}</span>
         <h2>{clockText(r.seconds)} 동안 달려 {r.rank}까지 키웠습니다</h2>
         <div className="score">{r.score.toLocaleString()}<small>점</small></div>
-        {best && (best.isNew ? <p className="newbest"><Trophy size={17} aria-hidden />최고 기록입니다{best.old ? ` (이전 ${best.old.score.toLocaleString()}점)` : ''}</p> : <p className="muted">최고 기록 {best.old!.score.toLocaleString()}점, {clockText(best.old!.seconds)}</p>)}
+        {best && (best.isNew ? <p className="newbest"><Trophy size={17} aria-hidden />최고 기록입니다{best.old ? ` (이전 ${best.old.score.toLocaleString()}점)` : ''}</p> : best.old && <p className="muted">최고 기록 {best.old.score.toLocaleString()}점, {clockText(best.old.seconds)}</p>)}
         <div className="nums">
           <div><span>완료</span><b>{r.completed.toLocaleString()}</b></div><div><span>성공률</span><b>{rate.toFixed(1)}%</b></div>
           <div><span>최고 처리량</span><b>{(r.peakRps / 10).toFixed(1)}/s</b></div><div><span>클라이언트</span><b>{r.sources}개</b></div>
