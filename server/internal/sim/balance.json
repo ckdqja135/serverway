@@ -1,0 +1,84 @@
+{
+  "phaseSeconds": 45,
+  "areas": [
+    { "atSec": 0, "x": 2, "y": 2, "w": 17, "h": 10 },
+    { "atSec": 48, "x": 1, "y": 0, "w": 19, "h": 13 },
+    { "atSec": 118, "x": 0, "y": 0, "w": 21, "h": 15 },
+    { "atSec": 190, "x": 0, "y": 0, "w": 28, "h": 15 }
+  ],
+  "initialBudget": 90,
+  "phaseIncome": [60, 75, 90, 100, 110, 115, 120, 120, 120],
+  "revenueEvery": 5,
+  "refundPercent": 50,
+  "minNodeGap": 2,
+  "maxServers": 80,
+  "maxLinks": 400,
+  "scorePerComplete": 10,
+  "health": { "max": 100000, "failPenalty": 1500, "faultPenaltyPercent": 50, "successGain": 90, "maxGainPerSec": 500, "learnSeconds": 45, "learnFloor": 60000 },
+  "request": { "deadlineSec": 14, "maxHops": 8, "maxActive": 4000, "startSec": 4 },
+  "source": { "queue": 16 },
+  "api": {
+    "cost": 50, "costStep": 4,
+    "step": { "slots": 1, "queue": 2, "cost": 30 },
+    "levels": [
+      { "slots": 2, "procMs": 500, "queue": 6, "cost": 0 },
+      { "slots": 3, "procMs": 450, "queue": 8, "cost": 40 },
+      { "slots": 4, "procMs": 400, "queue": 10, "cost": 65 }
+    ]
+  },
+  "db": {
+    "cost": 110, "costStep": 25,
+    "step": { "slots": 2, "queue": 2, "cost": 35 },
+    "levels": [
+      { "slots": 2, "procMs": 500, "queue": 8, "cost": 0 },
+      { "slots": 3, "procMs": 450, "queue": 10, "cost": 60 },
+      { "slots": 5, "procMs": 420, "queue": 12, "cost": 90 },
+      { "slots": 7, "procMs": 400, "queue": 14, "cost": 120 }
+    ]
+  },
+  "link": {
+    "baseCost": 6, "perCell": 1, "cellsPerSec": 8, "roomPerCell": 2,
+    "step": { "perSec": 6, "cost": 16 },
+    "levels": [ { "perSec": 4, "cost": 0 }, { "perSec": 8, "cost": 22 }, { "perSec": 14, "cost": 36 } ]
+  },
+  "sources": [
+    { "x": 5, "y": 7, "appearSec": 0, "noticeSec": 0, "rate": [[0, 400], [45, 1200], [110, 2500], [200, 3400], [420, 4200]] },
+    { "x": 8, "y": 2, "appearSec": 60, "noticeSec": 12, "rate": [[60, 500], [130, 1600], [240, 2500], [420, 3400]] },
+    { "x": 8, "y": 12, "appearSec": 130, "noticeSec": 12, "rate": [[130, 500], [200, 1500], [300, 2200], [420, 2800]] },
+    { "x": 23, "y": 4, "appearSec": 205, "noticeSec": 15, "rate": [[205, 500], [270, 1400], [350, 2000], [420, 2600]] },
+    { "x": 24, "y": 11, "appearSec": 285, "noticeSec": 15, "rate": [[285, 500], [350, 1300], [420, 2000]] }
+  ],
+  "startApi": { "x": 10, "y": 7 },
+  "db0": { "x": 16, "y": 7 },
+  "faults": [
+    { "type": "api_slow", "atSec": 112, "noticeSec": 14, "durationSec": 18, "percent": 45 },
+    { "type": "link_block", "atSec": 190, "noticeSec": 14, "durationSec": 16, "percent": 0 },
+    { "type": "api_down", "atSec": 265, "noticeSec": 16, "durationSec": 14, "percent": 0 },
+    { "type": "api_slow", "atSec": 345, "noticeSec": 14, "durationSec": 20, "percent": 40 }
+  ],
+  "endless": {
+    "sourceFromSec": 350, "sourceEverySec": 55, "sourceMinEverySec": 32, "sourceNoticeSec": 15,
+    "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 200, "surgeFromMin": 8, "surgePerMin": 5,
+    "faultFromSec": 400, "faultEverySec": 70, "faultMinEverySec": 40,
+    "expandFromSec": 240, "expandEverySec": 55, "maxW": 60, "maxH": 32,
+    "incomeStep": 5, "phaseStepSec": 5, "phaseMaxSec": 75
+  },
+  "ranks": [
+    { "at": 0, "name": "사이드 프로젝트" },
+    { "at": 150, "name": "스타트업" },
+    { "at": 900, "name": "성장 서비스" },
+    { "at": 3000, "name": "국민 서비스" },
+    { "at": 8000, "name": "글로벌 플랫폼" },
+    { "at": 20000, "name": "전설의 인프라" }
+  ],
+  "rewards": [
+    { "id": "budget", "amount": 60 },
+    { "id": "queue", "amount": 3 },
+    { "id": "deadline", "amount": 2 },
+    { "id": "linkRate", "amount": 1 },
+    { "id": "health", "amount": 25000 },
+    { "id": "apiOpt", "amount": 12 },
+    { "id": "dbIndex", "amount": 12 },
+    { "id": "cache", "amount": 12 }
+  ]
+}
