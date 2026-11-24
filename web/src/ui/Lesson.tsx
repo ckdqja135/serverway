@@ -221,7 +221,7 @@ export function LessonEnd({ onDone, onHome }: { onDone: () => void; onHome: () =
         <h2>튜토리얼을 마쳤습니다</h2>
         <p className="muted">아래 표는 게임 중에도 설정의 게임 규칙에서 다시 볼 수 있습니다.</p>
         <WhenToGrow />
-        <p>본 게임은 끝나는 시간이 없는 마라톤입니다. 적은 예산으로 작게 시작하고, 막히기 조금 전에 넓히는 것이 좋습니다.</p>
+        <p>본 게임은 끝나는 시간이 없습니다. 적은 예산으로 작게 시작하고, 막히기 조금 전에 넓히는 것이 좋습니다.</p>
         <div className="row">
           <button className="big" onClick={onHome}><House size={17} aria-hidden />처음으로</button>
           <button ref={go} className="big primary" onClick={onDone}><Play size={18} aria-hidden />본 게임 시작</button>

@@ -11,7 +11,7 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
       <div className="startcard">
         <Mark />
         <h1>Serverway</h1>
-        <p className="tag">트래픽 하나가 오가는 작은 서버에서 시작해<br />감당할 수 있을 때까지 끝없이 키우는 마라톤입니다.</p>
+        <p className="tag">트래픽 하나가 오가는 작은 서버에서 시작해<br />감당할 수 있을 때까지 끝없이 키워 보세요.</p>
         {best && <p className="best"><Trophy size={16} aria-hidden />최고 기록 {best.score.toLocaleString()}점, {clockText(best.seconds)}, {best.rank}</p>}
         <div className="row">
           {resume && <button className="big" onClick={resume}><RotateCw size={18} aria-hidden />이어서 하기</button>}
