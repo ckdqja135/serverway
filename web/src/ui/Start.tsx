@@ -21,6 +21,7 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
         {!learned() && <p className="fine">처음에는 튜토리얼부터 시작합니다. 언제든 건너뛸 수 있습니다.</p>}
         <label className="seed"><Dices size={15} aria-hidden />시드
           <input inputMode="numeric" maxLength={6} value={seed} placeholder="비우면 무작위" onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} /></label>
+        <p className="fine">시드는 보상이나 장애 같은 운을 정하는 번호입니다.<br />같은 번호를 쓰면 친구와 같은 운으로 시작합니다.</p>
         {error && <p className="err" role="alert">{error}</p>}
         <ul className="rules">
           <li><b>왕복</b>요청은 서버와 DB를 거친 뒤 응답으로 돌아와야 완료됩니다.</li>
