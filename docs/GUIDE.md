@@ -63,3 +63,4 @@ http://127.0.0.1:7800 을 엽니다. Go와 Node가 필요합니다.
 | web/src/client.ts | 서버 상태 보관과 화면 시계 |
 | web/src/board.ts | Canvas 보드 |
 | web/src/ui | React HUD와 패널 |
+| web/src/guard.ts | 우클릭과 개발자 도구 단축키 막기 (빌드한 화면에서만) |
