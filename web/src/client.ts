@@ -52,7 +52,8 @@ export class GameClient {
 
   static async create(seed?: number, practice = false): Promise<string> {
     const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed: seed ?? 0, practice }) })
-    const d = await r.json()
+    const d = await r.json().catch(() => null)
+    if (!d) throw new Error('게임 서버에 연결할 수 없습니다')
     if (!r.ok) throw new Error(d.error)
     return d.id
   }
