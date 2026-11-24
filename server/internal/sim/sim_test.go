@@ -119,7 +119,7 @@ func TestNoLinkNeverCompletes(t *testing.T) {
 func TestCannotSkipStage(t *testing.T) {
 	g := setup(t, nil)
 	if a := g.cmd(Command{Type: "link", From: g.src.ID, To: g.db.ID}); a.OK || g.Budget != 100000 {
-		t.Fatal("발생지에서 DB로 바로 연결되면 안 됨")
+		t.Fatal("클라이언트에서 DB로 바로 연결되면 안 됨")
 	}
 	// 규칙을 어긴 링크가 있더라도 단계를 건너뛰지 않는다.
 	g.Links = append(g.Links, &Link{ID: 99, From: g.src.ID, To: g.db.ID, Cells: 9, Travel: 5})
@@ -146,7 +146,7 @@ func TestCompletesThroughPath(t *testing.T) {
 	}
 }
 
-// 완료 시점은 DB 처리가 아니라 응답이 발생지로 돌아왔을 때다.
+// 완료 시점은 DB 처리가 아니라 응답이 클라이언트로 돌아왔을 때다.
 func TestRoundTrip(t *testing.T) {
 	g := setup(t, func(c *Config) { c.Sources[0].Rate = [][2]int{{0, 1000}, {1, 1000}, {2, 0}} })
 	l1, l2 := g.wire()
@@ -189,7 +189,7 @@ func TestQueueLimitAndDeadline(t *testing.T) {
 		peak, lane = max(peak, len(g.api.Queue)), max(lane, len(g.Links[0].Lanes[Fwd].Moving))
 		jam = jam || g.Links[0].Jam
 	}
-	// 서버 대기열은 상한까지만 차고, 넘친 트래픽은 링크 위에 밀리다가 발생지에서 넘친다.
+	// 서버 대기열은 상한까지만 차고, 넘친 트래픽은 링크 위에 밀리다가 클라이언트에서 넘친다.
 	if peak != limit || !jam || lane != g.LinkRoom(g.Links[0]) || g.src.Fail[FailOverflow] == 0 {
 		t.Fatalf("대기열 최대 %d 상한 %d 체증 %v 초과 실패 %d", peak, limit, jam, g.src.Fail[FailOverflow])
 	}
@@ -466,7 +466,7 @@ func TestMarathonBalance(t *testing.T) {
 	}
 }
 
-// 발생지, 보드, 서버, 트래픽이 시간이 지나며 계속 늘어난다.
+// 클라이언트, 보드, 서버, 트래픽이 시간이 지나며 계속 늘어난다.
 func TestEndlessGrowth(t *testing.T) {
 	c := Default()
 	c.Health.FailPenalty, c.Faults = 0, nil
@@ -494,14 +494,14 @@ func TestEndlessGrowth(t *testing.T) {
 	for _, sec := range []int{300, 600, 900, 1500} {
 		n, area, rate := at(sec)
 		if n <= pn || rate <= pr || area < pa || s.Over != "" {
-			t.Fatalf("%d초: 발생지 %d→%d 면적 %d→%d 트래픽 %d→%d", sec, pn, n, pa, area, pr, rate)
+			t.Fatalf("%d초: 클라이언트 %d→%d 면적 %d→%d 트래픽 %d→%d", sec, pn, n, pa, area, pr, rate)
 		}
 		pn, pa, pr = n, area, rate
 	}
 	for i, n := range servers(s, Source) {
 		for _, o := range servers(s, Source)[i+1:] {
 			if dist(n.X, n.Y, o.X, o.Y) < 3 {
-				t.Fatal("발생지가 겹침")
+				t.Fatal("클라이언트가 겹침")
 			}
 		}
 	}

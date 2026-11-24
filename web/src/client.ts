@@ -8,6 +8,12 @@ export type Status = 'connecting' | 'open' | 'lost' | 'ended'
 const MAX_FX = 120
 const MAX_LOG = 60
 
+function turn(o: { x: number; y: number; w?: number; h?: number }) {
+  [o.x, o.y] = [o.y, o.x]
+  if (o.w !== undefined && o.h !== undefined) [o.w, o.h] = [o.h, o.w]
+}
+const turnHead = (h: Head) => { turn(h.area); h.upcoming.forEach(turn) }
+
 // GameClient는 서버의 기준 상태를 받아 두는 곳이다. 점수나 성공 여부를 스스로 계산하지 않는다.
 export class GameClient {
   status: Status = 'connecting'
@@ -26,6 +32,8 @@ export class GameClient {
   version = 0
   resets = 0
   ready = false
+  grew = false // 이번 구간에서 판이 넓어졌는지
+  flip = false // 세로 화면에서는 x와 y를 바꿔 보여 준다
   dotPos: (d: Dot) => { x: number; y: number } | null = () => null
 
   private ws?: WebSocket
@@ -74,7 +82,7 @@ export class GameClient {
 
   send(type: string, body: Record<string, number | boolean | string> = {}): Promise<Ack> {
     if (this.status !== 'open' || !this.ws) {
-      this.say('서버와 다시 연결하는 중입니다', true)
+      this.say('게임 서버와 다시 연결하는 중입니다', true)
       return Promise.resolve({ seq: 0, ok: false, tick: 0 })
     }
     if (type === 'speed') this.head = { ...this.head, speed: Number(body.speed) } // 빠르게 눌러도 이어지도록 표시만 먼저 바꾼다
@@ -89,7 +97,23 @@ export class GameClient {
 
   say(text: string, bad = false) { this.notice = { text, bad, id: ++this.noticeId }; this.changed() }
 
+  setFlip(on: boolean) {
+    if (on === this.flip || !this.ready) return false
+    this.flip = on
+    this.nodes.forEach(turn)
+    turnHead(this.head)
+    this.config.sources.forEach(turn)
+    this.fx = []
+    this.changed()
+    return true
+  }
+
   private receive(m: any) {
+    if (this.flip && m.epoch >= this.epoch) {
+      m.nodes?.forEach(turn)
+      m.config?.sources.forEach(turn)
+      if (m.head) turnHead(m.head)
+    }
     if (m.type === 'snapshot') {
       const fresh = m.epoch !== this.epoch
       this.epoch = m.epoch; this.seed = m.seed; this.seq = m.lastSeq; this.config = m.config; this.head = m.head; this.result = m.result
@@ -104,6 +128,7 @@ export class GameClient {
     } else if (m.epoch !== this.epoch) return
     else if (m.type === 'ack') { this.waits.get(m.ack.seq)?.(m.ack); this.waits.delete(m.ack.seq) }
     else if (m.type === 'frame') {
+      if (m.head.phase > this.head.phase) this.grew = m.head.area.w * m.head.area.h > this.head.area.w * this.head.area.h
       this.head = m.head
       for (const n of m.nodes ?? []) {
         const old = this.nodes.get(n.id)
@@ -198,7 +223,7 @@ export class GameClient {
         if (e.t === 'ended') this.say('장애가 복구되었습니다')
         if (e.t === 'canceled') this.say('장애 대상이 사라져 이번 장애는 지나갔습니다')
         break
-      case 'source': this.say('새 발생지가 열렸습니다. API로 연결하세요'); break
+      case 'source': this.say('새 클라이언트가 들어왔습니다. 서버로 연결하세요'); break
     }
   }
 }

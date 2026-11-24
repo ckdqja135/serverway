@@ -69,8 +69,8 @@ type Endless struct {
 	FaultFromSec      int `json:"faultFromSec"`
 	FaultEverySec     int `json:"faultEverySec"`
 	FaultMinEverySec  int `json:"faultMinEverySec"`
-	ExpandFromSec     int `json:"expandFromSec"`
-	ExpandEverySec    int `json:"expandEverySec"`
+	ExpandW           int `json:"expandW"` // 정해진 영역을 다 쓴 뒤 구간마다 넓어지는 칸 수
+	ExpandH           int `json:"expandH"`
 	MaxW              int `json:"maxW"`
 	MaxH              int `json:"maxH"`
 	IncomeStep        int `json:"incomeStep"`
@@ -104,13 +104,13 @@ type RewardDef struct {
 	Amount int    `json:"amount"`
 }
 
-// Area는 그 시각부터 쓸 수 있는 보드 영역이다.
+// Area는 그 구간을 넘긴 뒤부터 쓸 수 있는 보드 영역이다.
 type Area struct {
-	AtSec int `json:"atSec"`
-	X     int `json:"x"`
-	Y     int `json:"y"`
-	W     int `json:"w"`
-	H     int `json:"h"`
+	AtPhase int `json:"atPhase"`
+	X       int `json:"x"`
+	Y       int `json:"y"`
+	W       int `json:"w"`
+	H       int `json:"h"`
 }
 
 type Pos struct {

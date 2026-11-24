@@ -16,7 +16,7 @@ export function Panel({ g, sel, onClose, confirm, setConfirm }: { g: GameClient;
       <button className="x" onClick={onClose} aria-label="선택 해제"><X size={16} /></button>
       {n ? <NodeInfo g={g} n={n} /> : <LinkInfo g={g} l={l!} />}
       <Fails fail={(n ?? l)!.fail} />
-      {n && n.kind !== SOURCE && !n.draining && <Remove g={g} what={n.kind === API ? '이 API' : '이 DB'} refund={n.refund} body="새 요청을 막고, 안에 있는 요청의 응답이 모두 돌아온 뒤 사라집니다." run={() => g.send('removeNode', { id: n.id })} confirm={confirm} setConfirm={setConfirm} />}
+      {n && n.kind !== SOURCE && !n.draining && <Remove g={g} what={n.kind === API ? '이 서버' : '이 DB'} refund={n.refund} body="새 요청을 막고, 안에 있는 요청의 응답이 모두 돌아온 뒤 사라집니다." run={() => g.send('removeNode', { id: n.id })} confirm={confirm} setConfirm={setConfirm} />}
       {l && !l.draining && <Remove g={g} what="이 링크" refund={l.refund} body="새 요청을 막고, 이미 나간 요청의 응답이 모두 돌아온 뒤 사라집니다." run={() => g.send('removeLink', { id: l.id })} confirm={confirm} setConfirm={setConfirm} />}
       {(n?.draining || l?.draining) && <p className="muted">철거 중입니다. 왕복 중인 요청 {(n ?? l)!.pending}개가 끝나면 사라집니다.</p>}
     </aside>
@@ -82,7 +82,7 @@ function LinkInfo({ g, l }: { g: GameClient; l: GLink }) {
       <h2 className="peri">링크 <small>Lv{l.level + 1}</small></h2>
       <p className="muted">{a && nodeName(a)} <span aria-hidden>⇄</span> {b && nodeName(b)}</p>
       <p className={l.state === 'full' || l.state === 'blocked' ? 'bad' : 'muted'}>
-        {l.state === 'blocked' ? '장애로 끊겨 있습니다.' : l.state === 'full' ? '이 링크가 병목입니다. 전송 용량이 부족합니다.' : l.state === 'jam' ? '도착 서버가 꽉 차서 밀려 있습니다. 원인은 링크가 아니라 앞쪽 서버입니다.' : l.state === 'busy' ? '전송량이 한계에 가깝습니다.' : '여유가 있습니다.'}
+        {l.state === 'blocked' ? '장애로 끊겨 있습니다.' : l.state === 'full' ? '이 링크가 병목입니다. 전송 용량이 부족합니다.' : l.state === 'jam' ? '도착한 곳이 꽉 차서 밀려 있습니다. 원인은 링크가 아니라 그 앞쪽입니다.' : l.state === 'busy' ? '전송량이 한계에 가깝습니다.' : '여유가 있습니다.'}
       </p>
       <Meter label="전송 용량 (한 차선, 초당)" value={l.used} max={l.cap} tone="peri" />
       <Meter label="링크 위에 있는 요청" value={l.moving[0]} max={l.room} tone="coral" />

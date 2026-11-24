@@ -1,4 +1,4 @@
-import { Database, Hexagon, MousePointer2, Play, ScrollText, WifiOff, X } from 'lucide-react'
+import { Database, Hexagon, Maximize2, MousePointer2, Play, ScrollText, WifiOff, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Board, type Hint } from './board'
 import { GameClient } from './client'
@@ -46,6 +46,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   const [sel, setSel] = useState<Selection>(null)
   const [tool, setTool] = useState<Tool>('connect')
   const [confirm, setConfirm] = useState(false)
+  const [zoomed, setZoomed] = useState(false)
   const [menu, setMenu] = useState(false)
   const [help, setHelp] = useState(false)
   const [tutorial, setTut] = useState(() => pref('serverway.tutorial', true))
@@ -58,10 +59,19 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
     const b = new Board(cv.current!, g)
     b.onSelect = select
     b.onTool = setTool
+    b.onZoom = setZoomed
     board.current = b
     return () => { b.destroy(); g.close() }
   }, [g])
   useEffect(() => { select(null); setTool('connect') }, [g.resets])
+  // 작은 화면에서는 안내와 알림이 노드를 가리지 않게 보드를 그 사이에 맞춘다.
+  useEffect(() => {
+    if (!board.current) return
+    const edge = (q: string) => document.querySelector(q)?.getBoundingClientRect()
+    const top = edge('.lesson, .tip'), low = [edge('.alerts > *'), edge('.pausebar')].filter((r) => !!r)
+    board.current.cover = top ? top.bottom + 6 : 0
+    board.current.under = low.length ? window.innerHeight - Math.min(...low.map((r) => r.top)) + 6 : 0
+  })
 
   const h = g.ready ? g.head : null
   const overlay = menu || help
@@ -127,9 +137,10 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
         <Panel g={g} sel={sel} onClose={() => select(null)} confirm={confirm} setConfirm={setConfirm} />
         <div className="dock" role="toolbar" aria-label="건설 도구">
           <button aria-pressed={tool === 'connect'} onClick={() => setTool('connect')}><MousePointer2 size={20} aria-hidden /><span><b>선택 / 연결</b>드래그로 링크</span><kbd>1</kbd></button>
-          <button aria-pressed={tool === 'api'} className={h.budget < h.apiCost ? 'poor' : ''} onClick={() => setTool('api')}><Hexagon size={20} aria-hidden /><span><b>API 추가</b>비용 {h.apiCost}, {count(API)}대</span><kbd>2</kbd></button>
+          <button aria-pressed={tool === 'api'} className={h.budget < h.apiCost ? 'poor' : ''} onClick={() => setTool('api')}><Hexagon size={20} aria-hidden /><span><b>서버 추가</b>비용 {h.apiCost}, {count(API)}대</span><kbd>2</kbd></button>
           <button aria-pressed={tool === 'db'} className={h.budget < h.dbCost ? 'poor' : ''} onClick={() => setTool('db')}><Database size={20} aria-hidden /><span><b>DB 샤드 추가</b>비용 {h.dbCost}, {count(DB)}대</span><kbd>3</kbd></button>
         </div>
+        {zoomed && <button className="fit" onClick={() => board.current?.resetView()}><Maximize2 size={16} aria-hidden />전체 보기</button>}
         {log && <LogFeed g={g} onClose={() => setLog(false)} />}
         {!log && <button className="logopen" onClick={() => setLog(true)} aria-label="요청 로그 보기"><ScrollText size={17} /></button>}
         {tips && step && !h.reward && !h.over && <div className="tip" role="status"><p>{step.text}</p>{step.done && <button onClick={step.done}>확인</button>}<button className="x" aria-label="안내 끄기" onClick={() => setTutorial(false)}><X size={14} /></button></div>}
@@ -178,15 +189,15 @@ function useTutorial(g: GameClient): Step | null {
     const nodes = [...g.nodes.values()], links = [...g.links.values()], h = g.head
     const pair = (a: number, b: number): Hint | undefined => { const x = nodes.find((n) => n.kind === a), y = nodes.find((n) => n.kind === b); return x && y && { drag: [x.id, y.id] } }
     const linked = (from: number, to: number) => links.some((l) => g.nodes.get(l.from)?.kind === from && g.nodes.get(l.to)?.kind === to)
-    if (!linked(SOURCE, API)) return { text: '발생지(주황 원)를 누른 채 API(육각형)까지 끌어 놓으세요. 트래픽이 지나갈 길이 생깁니다.', hint: pair(SOURCE, API) }
-    if (!linked(API, DB)) return { text: '이번에는 API에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: pair(API, DB) }
+    if (!linked(SOURCE, API)) return { text: '클라이언트(주황 원)를 누른 채 서버(육각형)까지 끌어 놓으세요. 트래픽이 지나갈 길이 생깁니다.', hint: pair(SOURCE, API) }
+    if (!linked(API, DB)) return { text: '이번에는 서버에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: pair(API, DB) }
     if (!h.started) return { text: '길이 완성됐습니다. 시작을 누르면 첫 트래픽이 출발합니다.' }
-    if (h.completed < 2) return { text: '동그라미는 나가는 요청, 초록 네모는 돌아오는 응답입니다. 발생지에 돌아오면 완료입니다.' }
-    if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 남은 시간 동안 다른 API를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
+    if (h.completed < 2) return { text: '동그라미는 나가는 요청, 초록 네모는 돌아오는 응답입니다. 클라이언트에 돌아오면 완료입니다.' }
+    if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 남은 시간 동안 다른 서버를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
     const lone = nodes.find((n) => n.kind === SOURCE && !n.routed)
-    if (lone) return { text: `발생지 ${lone.index}이 아직 연결되지 않았습니다. 가까운 API로 끌어 연결하세요.` }
+    if (lone) return { text: `아직 연결되지 않은 클라이언트가 있습니다 (클라이언트 ${lone.index}). 가까운 서버로 끌어 연결하세요.` }
     const server = nodes.find((n) => n.kind !== SOURCE && (n.state === 'busy' || n.state === 'full') && !(n.stuck > 0 && n.stuck >= n.slots))
-    if (server && !seen.jam) return { text: `${server.kind === API ? `API ${server.index}` : `DB ${server.index}`}에 구슬이 쌓이고 있습니다. 밀린 줄의 맨 앞이 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' API를 추가하세요.' : ' DB 샤드를 추가하세요. API를 늘려도 DB 병목은 풀리지 않습니다.'}`, done: ok('jam') }
+    if (server && !seen.jam) return { text: `${server.kind === API ? `서버 ${server.index}` : `DB ${server.index}`}에 구슬이 쌓이고 있습니다. 밀린 줄의 맨 앞이 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' 서버를 추가하세요.' : ' DB 샤드를 추가하세요. 서버를 늘려도 DB 병목은 풀리지 않습니다.'}`, done: ok('jam') }
     if (links.some((l) => l.state === 'full') && !seen.link) return { text: '빨간 링크는 전송 용량이 한계입니다. 눌러서 업그레이드하거나 링크를 하나 더 만드세요.', done: ok('link') }
     if (h.completed >= 2 && h.tick < 60 * g.config.tps && !seen.grow) return { text: '트래픽은 점점 늘어납니다. 노드나 링크를 누르면 여유가 얼마나 있는지 볼 수 있습니다.', done: ok('grow') }
     return null

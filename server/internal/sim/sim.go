@@ -25,7 +25,7 @@ const (
 type State string
 
 const (
-	Waiting    State = "waiting"    // 발생지나 서버의 대기열
+	Waiting    State = "waiting"    // 클라이언트나 서버의 대기열
 	Moving     State = "moving"     // 링크 위
 	Processing State = "processing" // 서버 슬롯
 	Sending    State = "sending"    // 처리를 마치고 다음 링크를 기다림
@@ -38,7 +38,7 @@ const (
 	ToAPI      = iota // API 처리가 필요함
 	ToDB              // DB 처리가 필요함
 	BackToAPI         // 응답이 API로 돌아가는 중
-	BackToUser        // 응답이 발생지로 돌아가는 중
+	BackToUser        // 응답이 클라이언트로 돌아가는 중
 	Finished
 )
 
@@ -75,7 +75,7 @@ type Node struct {
 	Pending  int        // 이 노드를 거쳐 왕복 중인 요청 수
 	Draining bool
 	Speed    int // 처리 속도 퍼센트. 장애가 바꾼다
-	Def      int // 발생지 설정 번호. -1이면 마라톤에서 새로 생긴 발생지
+	Def      int // 클라이언트 설정 번호. -1이면 마라톤에서 새로 생긴 클라이언트
 	Born     int
 	acc      int
 	next     int
@@ -133,7 +133,7 @@ type FaultStat struct {
 	Failed int    `json:"failed"`
 }
 
-// Coming은 나타날 예정인 발생지다.
+// Coming은 나타날 예정인 클라이언트다.
 type Coming struct {
 	X, Y, At int
 	Def      int
@@ -203,9 +203,9 @@ type Sim struct {
 	faultID  int
 	faultAt  int // 다음 마라톤 장애의 시작 틱
 	faultN   int
-	sourceAt int // 다음 마라톤 발생지가 나타나는 틱
+	sourceAt int // 다음 마라톤 클라이언트가 나타나는 틱
 	sourceN  int
-	load     int // 튜토리얼: 발생지마다 초당 요청 수의 1000배
+	load     int // 튜토리얼: 클라이언트마다 초당 요청 수의 1000배
 	lastSeq  int64
 	lats     [100]int // 최근 완료 요청의 왕복 틱 수
 	latN     int
@@ -354,18 +354,17 @@ func (s *Sim) boosted(k Kind, lv ServerLevel) ServerLevel {
 // LinkRoom은 한 차선에 동시에 올라갈 수 있는 요청 수다.
 func (s *Sim) LinkRoom(l *Link) int { return l.Cells * s.Cfg.Link.RoomPerCell * (l.Level + 1) }
 
-// Area는 지금 쓸 수 있는 보드 영역이다. 정해진 영역을 다 쓰면 사방으로 계속 넓어진다.
+// Area는 지금 쓸 수 있는 보드 영역이다. 구간을 넘길 때마다 넓어지고, 정해진 영역을 다 쓰면 사방으로 계속 넓어진다.
 func (s *Sim) Area() Area {
 	a := s.Cfg.Areas[0]
 	for _, x := range s.Cfg.Areas {
-		if s.Tick >= x.AtSec*TPS {
+		if s.Phase >= x.AtPhase {
 			a = x
 		}
 	}
 	e := s.Cfg.Endless
-	if e.ExpandEverySec > 0 && s.Tick >= e.ExpandFromSec*TPS {
-		k := 1 + (s.Tick-e.ExpandFromSec*TPS)/(e.ExpandEverySec*TPS)
-		w, h := max(a.W, min(e.MaxW, a.W+4*k)), max(a.H, min(e.MaxH, a.H+2*k))
+	if k := s.Phase - s.Cfg.Areas[len(s.Cfg.Areas)-1].AtPhase; k > 0 && e.ExpandW+e.ExpandH > 0 {
+		w, h := max(a.W, min(e.MaxW, a.W+e.ExpandW*k)), max(a.H, min(e.MaxH, a.H+e.ExpandH*k))
 		a.X, a.Y = a.X-(w-a.W)/2, a.Y-(h-a.H)/2
 		a.W, a.H = w, h
 	}
@@ -416,7 +415,7 @@ func (s *Sim) Surge(tick int) int {
 	return 100 + (e.SurgePerMin*m+m*m/200)/100
 }
 
-// Rate는 발생지의 현재 초당 요청 수(1000배)다.
+// Rate는 클라이언트의 현재 초당 요청 수(1000배)다.
 func (s *Sim) Rate(n *Node, tick int) int { return s.baseRate(n, tick) * s.Surge(tick) / 100 }
 
 // baseRate는 설정 지점 사이를 부드럽게 잇는다.
@@ -481,7 +480,7 @@ func (s *Sim) step() {
 	s.stepEnd()
 }
 
-// stepGrowth는 발생지 예고와 등장, 마라톤 장애 예약을 처리한다.
+// stepGrowth는 클라이언트 예고와 등장, 마라톤 장애 예약을 처리한다.
 func (s *Sim) stepGrowth() {
 	for i, d := range s.Cfg.Sources {
 		if d.AppearSec > 0 && s.Tick == (d.AppearSec-d.NoticeSec)*TPS {
@@ -529,7 +528,7 @@ func (s *Sim) stepGrowth() {
 	}
 }
 
-// spot은 새 발생지 자리를 고른다. 후보 중 다른 노드와 가장 멀리 떨어진 곳이다.
+// spot은 새 클라이언트 자리를 고른다. 후보 중 다른 노드와 가장 멀리 떨어진 곳이다.
 func (s *Sim) spot() (int, int, bool) {
 	a := s.Area()
 	bx, by, best := 0, 0, 0.0
@@ -1175,7 +1174,7 @@ func (s *Sim) stepEnd() {
 	s.Pending = &Reward{Phase: s.Phase, Income: income, Options: []RewardDef{pool[a], pool[b]}}
 }
 
-// Routed는 발생지에서 완료까지 이어지는 길이 있는지 구조만 보고 답한다.
+// Routed는 클라이언트에서 완료까지 이어지는 길이 있는지 구조만 보고 답한다.
 func (s *Sim) Routed(n *Node) bool {
 	for _, l := range s.outs[n.ID] {
 		if s.usable(l, ToAPI, false) {

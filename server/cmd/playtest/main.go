@@ -40,7 +40,7 @@ func main() {
 	}{
 		{"아무것도 안 함", sim.Bot{}},
 		{"연결만", sim.Bot{Link: true}},
-		{"API만 증설", sim.Bot{Link: true, API: true, LinkUp: true, Reroute: true}},
+		{"서버만 증설", sim.Bot{Link: true, API: true, LinkUp: true, Reroute: true}},
 		{"DB만 증설", sim.Bot{Link: true, DB: true}},
 		{"링크 개선 없음", sim.Bot{Link: true, API: true, DB: true, Reroute: true}},
 		{"우회로 없음", sim.Bot{Link: true, API: true, DB: true, LinkUp: true}},

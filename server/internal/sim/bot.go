@@ -134,7 +134,7 @@ func (b *Bot) Act(s *Sim) {
 				continue
 			}
 			if id, ok := b.place(s, "api", a.X, a.Y); ok {
-				// 이 API로 가장 많이 보내는 발생지를 새 API에도 잇는다.
+				// 이 API로 가장 많이 보내는 클라이언트를 새 API에도 잇는다.
 				var busy *Link
 				for _, l := range s.ins[a.ID] {
 					if busy == nil || l.Used() > busy.Used() {

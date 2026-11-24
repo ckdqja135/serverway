@@ -53,7 +53,7 @@ h1, h2, h3, p, dl, dd, ul { margin: 0; padding: 0; } ul { list-style: none; }
 .logopen { position: absolute; left: 20px; bottom: 22px; border: 0; box-shadow: var(--shadow); height: 44px; }
 .tip { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); background: #2a2d4f; color: #fff; border-radius: 16px; padding: 12px 42px 12px 18px; display: flex; gap: 14px; align-items: center; max-width: min(620px, 88vw); box-shadow: var(--shadow); } .tip button { color: #fff; background: rgba(255, 255, 255, 0.16); border: 0; padding: 5px 12px; } .tip .x { background: none; padding: 4px; }
 .lesson { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); width: min(600px, 88vw); background: #2a2d4f; color: #fff; border-radius: 18px; padding: 14px 18px 12px; display: grid; gap: 7px; box-shadow: var(--shadow); overflow: hidden; z-index: 6; } .lesson > div:not(.lessonbar) { display: flex; justify-content: space-between; align-items: center; gap: 12px; } .lesson b { font-size: 15.5px; font-weight: 800; } .lesson small { color: #a9b0dc; white-space: nowrap; } .lessonbar { position: absolute; inset: 0 0 auto; height: 4px; background: rgba(255, 255, 255, 0.14); } .lessonbar i { display: block; height: 100%; background: #8b97ff; transition: width 0.3s; }
-.lesson button { border: 0; color: #fff; padding: 5px 12px; } .lesson .skip { background: none; color: #a9b0dc; font-weight: 400; font-size: 13px; padding: 2px 0; margin-left: auto; } .lesson .skip:hover { color: #fff; } .lesson .next { background: var(--peri); padding: 8px 16px; } .lesson .next:hover { color: #fff; background: var(--periD); }
+.lesson button { border: 0; color: #fff; padding: 5px 12px; } .lesson .skip { background: none; color: #a9b0dc; font-weight: 400; font-size: 13px; padding: 2px 0; margin-left: auto; } .lesson .skip:hover { color: #fff; } .lesson .skip i { font-style: normal; } .lesson .next { background: var(--peri); padding: 8px 16px; } .lesson .next:hover { color: #fff; background: var(--periD); }
 [data-focus='reward'] .veil { place-items: start center; padding-top: 196px; }
 .lesson p, .learn, .grow { word-break: keep-all; }
 .flow { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; counter-reset: f; } .flow li { display: grid; grid-template-columns: 30px 48px 1fr; align-items: center; counter-increment: f; } .flow li::before { content: counter(f); width: 22px; height: 22px; border-radius: 50%; background: #e8ebff; color: var(--periD); font: 600 11px/22px var(--num); text-align: center; } .flow b { color: var(--periD); }
@@ -77,4 +77,32 @@ h1, h2, h3, p, dl, dd, ul { margin: 0; padding: 0; } ul { list-style: none; }
 @media (max-width: 1240px) { .word { display: none; } .stat { padding: 7px 9px; } .health .bar { width: 70px; } }
 @media (max-width: 980px) { .log { display: none; } .stat span { display: none; } }
 @media (max-height: 720px) { .log p:nth-child(-n + 4) { display: none; } }
+.fit { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); border: 0; box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
+/* 휴대폰. 기준을 바꾸면 board.ts의 layout도 같이 바꾼다. */
+@media (max-width: 760px), (max-height: 500px) {
+  html, body { overscroll-behavior: none; } .game { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; } button { touch-action: manipulation; } .seed input { font-size: 16px; }
+  .startcard { gap: 14px; } .start { padding: 18px; } .start h1 { font-size: 38px; } .mark { width: 190px; } .tag { font-size: 15px; } button.big { padding: 11px 18px; font-size: 15px; }
+  kbd, .log, .logopen, .health .bar, .lesson .skip i { display: none; }
+  .rail { height: 4px; } .hud { inset: 10px 8px auto; gap: 6px; } .stats { padding: 2px; border-radius: 14px; min-width: 0; } .stat { padding: 7px; gap: 5px; } .stat svg { width: 14px; height: 14px; flex: none; } .stat strong { font-size: 12px; }
+  .corner { gap: 5px; } .corner button { height: 40px; min-width: 40px; padding: 0 8px; border-radius: 13px; gap: 3px; } .corner em { font-size: 10px; }
+  .lesson, .tip { top: 58px; width: calc(100vw - 16px); max-width: 560px; border-radius: 15px; } .lesson { padding: 12px 14px 10px; gap: 5px; } .tip { padding: 9px 40px 9px 14px; } .lesson p, .tip p { font-size: 13.5px; line-height: 1.42; word-break: keep-all; } .lesson b { font-size: 14.5px; } .lesson b { white-space: nowrap; } .lesson .skip { font-size: 12.5px; }
+  .alerts { inset: auto 8px 86px; width: auto; } .fault { padding: 7px 12px; font-size: 12.5px; line-height: 1.35; border-radius: 12px; } .fault b { font-size: 13.5px; } .fault em { display: none; }
+  .pausebar { bottom: 86px; width: max-content; max-width: calc(100vw - 16px); white-space: normal; gap: 10px; padding-right: 14px; } .pausebar span { font-size: 12px; line-height: 1.3; word-break: keep-all; } .pausebar .big { padding: 10px 18px; }
+  .game:has(.pausebar) .alerts { bottom: 146px; } .fit { bottom: 92px; } .game:has(.pausebar) .fit, .game:has(.fault) .fit { bottom: 150px; }
+  .toast { bottom: 152px; width: max-content; max-width: 92vw; text-align: center; word-break: keep-all; font-size: 13px; }
+  .panel { padding: 14px; gap: 8px; border-radius: 18px; z-index: 4; } .panel > h2 { order: -3; } .panel > p { order: -2; } .panel > .upgrade { order: -1; } .panel h2 { font-size: 17px; } .kv { padding: 3px 0; font-size: 13px; }
+  .veil { padding: 10px; } .modal { padding: 20px 18px; border-radius: 20px; gap: 11px; } .modal h2 { font-size: 19px; } .modal p, .modal li, .card { word-break: keep-all; } .cards { gap: 10px; } .card { padding: 16px 10px; font-size: 13px; } .card b { font-size: 15px; } .score { font-size: 38px; } .nums div { padding: 8px 9px; } .nums b { font-size: 13px; } .failbar { grid-template-columns: 122px 1fr 34px; gap: 7px; font-size: 12px; } .grow { font-size: 13px; } .flow li { grid-template-columns: 30px 44px 1fr; font-size: 13.5px; }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  .stat.p95 { display: none; } .stats { flex: 1; justify-content: space-between; } .stat { padding: 7px 5px; flex: 1; justify-content: center; } .corner { position: fixed; right: 8px; bottom: 96px; flex-direction: column; } .alerts { right: 56px; } .pausebar { left: 8px; transform: none; max-width: calc(100vw - 72px); }
+  .dock { left: 8px; right: 8px; bottom: 8px; transform: none; padding: 5px; gap: 4px; border-radius: 18px; } .dock button { flex: 1; flex-direction: column; gap: 1px; padding: 7px 2px; border-radius: 14px; } .dock span { justify-items: center; font-size: 11px; } .dock b { font-size: 12.5px; }
+  .panel { inset: auto 8px 8px; width: auto; max-height: 46%; } .panel dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .dock { left: 8px; top: 58px; bottom: auto; transform: none; flex-direction: column; width: 84px; padding: 5px; gap: 3px; border-radius: 18px; } .dock button { flex-direction: column; gap: 0; padding: 6px 2px; border-radius: 13px; } .dock span { justify-items: center; font-size: 10.5px; } .dock b { font-size: 12px; }
+  .panel { right: 8px; top: 56px; bottom: 8px; width: 252px; max-height: none; } .lesson, .tip { width: calc(100vw - 216px); top: 54px; }
+  .game:has(.panel) .lesson, .game:has(.panel) .tip { left: 98px; transform: none; width: calc(100vw - 366px); }
+  .alerts { left: auto; bottom: 8px; width: 300px; } .game:has(.pausebar) .alerts { bottom: 8px; } .pausebar, .fit { bottom: 10px; } .game:has(.pausebar) .fit, .game:has(.fault) .fit { bottom: 66px; } .toast { bottom: 70px; }
+  [data-focus='reward'] .veil { padding-top: 136px; } [data-focus='reward'] .card { padding: 8px; gap: 4px; } [data-focus='reward'] .card .ic { width: 38px; height: 38px; border-radius: 12px; }
+}
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } .game button, .game .stat { animation: none !important; } }

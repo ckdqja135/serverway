@@ -13,15 +13,15 @@ export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void;
     <>
       {!c.practice && <div className="rail" role="progressbar" aria-label={`다음 보상까지 ${left}초`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(prog * 100)}><i style={{ width: `${prog * 100}%` }} /></div>}
       <div className="hud">
-        <div className="word">{c.practice ? '튜토리얼' : h.rankName}<small>{c.practice ? '연습용 서버' : <>{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}</>}</small></div>
+        <div className="word">{c.practice ? '튜토리얼' : h.rankName}<small>{c.practice ? '연습 중' : <>{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}</>}</small></div>
         <div className="stats">
           <Stat icon={<Star size={17} />} id="points" label="점수" value={h.score.toLocaleString()} />
           <div className={`stat health ${tone}`}>
             <HeartPulse size={17} aria-hidden /><div><span>서비스 상태 {tone === 'good' ? '안정' : tone === 'warn' ? '주의' : '위험'}</span><div className="bar"><i style={{ width: `${hp}%` }} /></div></div><strong>{hp}%</strong>
           </div>
           <Stat icon={<Coins size={17} />} id="budget" label={`예산 (${h.revenueNeed}건당 1)`} value={String(h.budget)} />
-          <Stat icon={<Activity size={17} />} label={h.surge > 100 ? `처리량 (트래픽 ${(h.surge / 100).toFixed(1)}배)` : '처리량'} value={`${(h.rps10 / 10).toFixed(1)}/s`} />
-          <Stat icon={<Gauge size={17} />} label="p95 왕복" value={h.p95 ? `${(h.p95 / 1000).toFixed(1)}s` : '-'} warn={h.p95 > h.deadline * 700} />
+          <Stat icon={<Activity size={17} />} id="rps" label={h.surge > 100 ? `처리량 (트래픽 ${(h.surge / 100).toFixed(1)}배)` : '처리량'} value={`${(h.rps10 / 10).toFixed(1)}/s`} />
+          <Stat icon={<Gauge size={17} />} id="p95" label="p95 왕복" value={h.p95 ? `${(h.p95 / 1000).toFixed(1)}s` : '-'} warn={h.p95 > h.deadline * 700} />
           <Stat icon={<Timer size={17} />} label={c.practice ? '연습 시간' : `마라톤 (보상 ${left}초)`} value={clockText(sec)} />
         </div>
         <div className="corner">

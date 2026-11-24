@@ -1,5 +1,5 @@
 import type { Dot, GameClient } from './client'
-import { API, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool } from './types'
+import { API, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
 
 const C = {
   paper: '#e9ecf7', area: '#f7f8fd', dot: '#cfd5ea', ink: '#2a2d4f', sub: '#6b7095',
@@ -22,8 +22,13 @@ export class Board {
   ui: UIState = { selection: null, tool: 'connect', hint: null }
   onSelect: (s: Selection) => void = () => {}
   onTool: (t: Tool) => void = () => {}
+  onZoom: (zoomed: boolean) => void = () => {}
+  cover = 0 // 작은 화면에서 위쪽 안내가 가리는 높이
+  under = 0 // 작은 화면에서 아래쪽 알림이 가리는 높이
   private ctx: CanvasRenderingContext2D
   private cam = { x: 2, y: 2, w: 17, h: 10 }
+  private area: Area = this.cam // 지금 보여 줄 판
+  private grow: { from: Area; at: number } | null = null
   private S = 40
   private ox = 0
   private oy = 0
@@ -35,6 +40,16 @@ export class Board {
   private resets = -1
   private dashed = 0
   private right = 28
+  private top = 104
+  private bottom = 104
+  private lift = 0
+  private view = { z: 1, x: 0, y: 0 } // 두 손가락 확대와 이동
+  private fit = { S: 40, cx: 0, cy: 0, max: 1 }
+  private zoomed = false
+  private touch = false
+  private pointers = new Map<number, { x: number; y: number }>()
+  private pinch: { d: number; x: number; y: number } | null = null
+  private pan: { x: number; y: number; vx: number; vy: number; moved: boolean } | null = null
   private off: (() => void)[] = []
 
   constructor(private cv: HTMLCanvasElement, private game: GameClient) {
@@ -47,9 +62,9 @@ export class Board {
     on('pointerdown', (e) => this.down(e))
     on('pointermove', (e) => this.move(e))
     on('pointerup', (e) => this.up(e))
-    on('pointercancel', () => { this.drag = null })
+    on('pointercancel', (e) => { this.pointers.delete(e.pointerId); this.drag = this.pan = null; if (!this.pointers.size) this.pinch = null })
     on('pointerleave', () => { this.mouse.inside = false })
-    on('contextmenu', (e) => { e.preventDefault(); this.drag = null; this.onTool('connect') })
+    on('contextmenu', (e) => { e.preventDefault(); if (this.touch) return; this.drag = null; this.onTool('connect') }) // 길게 누르기로 끌기가 끊기지 않게 한다
     const loop = (t: number) => {
       const dt = Math.min(0.1, (t - this.last) / 1000)
       this.last = t
@@ -62,6 +77,7 @@ export class Board {
 
   destroy() { cancelAnimationFrame(this.raf); this.off.forEach((f) => f()) }
   cancel() { this.drag = null }
+  resetView() { this.view = { z: 1, x: 0, y: 0 } }
 
   // 좌표
 
@@ -74,20 +90,56 @@ export class Board {
     const w = this.cv.clientWidth, h = this.cv.clientHeight, r = Math.min(2, window.devicePixelRatio || 1)
     if (this.cv.width !== Math.round(w * r) || this.cv.height !== Math.round(h * r)) { this.cv.width = Math.round(w * r); this.cv.height = Math.round(h * r) }
     this.ctx.setTransform(r, 0, 0, r, 0, 0)
-    const a = this.game.head.area
-    const k = this.resets !== this.game.resets ? 1 : Math.min(1, dt * 1.6)
+    // styles.css의 작은 화면 기준과 같다.
+    const compact = w <= 760 || h <= 500, tall = h > w
+    if (this.game.setFlip(tall)) { this.resets = -1; this.resetView() }
+    // 보상을 고르는 동안에는 가려져 있으므로, 고른 뒤에 판이 넓어지는 모습을 보여 준다.
+    const next = this.game.head.area, fresh = this.resets !== this.game.resets
+    if (fresh) { this.area = next; this.grow = null }
+    else if (!this.game.head.reward) {
+      if (next.w * next.h > this.area.w * this.area.h) {
+        this.grow = { from: this.area, at: performance.now() }
+        this.game.say(`판이 넓어졌습니다 (${next.w} x ${next.h})`)
+      }
+      this.area = next
+    }
+    const a = this.area
+    const k = fresh ? 1 : Math.min(1, dt * 1.6)
+    if (this.resets !== this.game.resets) this.resetView()
     this.resets = this.game.resets
     this.cam.x += (a.x - this.cam.x) * k; this.cam.y += (a.y - this.cam.y) * k
     this.cam.w += (a.w - this.cam.w) * k; this.cam.h += (a.h - this.cam.h) * k
     // 패널이 열리면 보드를 옆으로 비켜 가려지는 노드가 없게 한다.
-    const top = 104, bottom = 104, side = 28, sel = this.ui.selection
+    const side = compact ? 8 : 28, left = compact && !tall ? 98 : side, sel = this.ui.selection
     const open = sel && (sel.type === 'node' ? this.game.nodes : this.game.links).has(sel.id)
-    this.right += ((open && w > 900 ? 326 : side) - this.right) * Math.min(1, dt * 9)
-    const usable = w - side - this.right
-    this.S = Math.max(12, Math.min(usable / this.cam.w, (h - top - bottom) / this.cam.h))
-    this.ox = side + usable / 2 - (this.cam.x + this.cam.w / 2) * this.S
-    this.oy = top + (h - top - bottom) / 2 - (this.cam.y + this.cam.h / 2) * this.S
+    const ease = Math.min(1, dt * 9)
+    const beside = compact ? !tall : w > 900
+    this.right += ((open && beside ? (compact ? 266 : 326) : compact && tall ? 54 : side) - this.right) * ease
+    this.top += ((compact ? Math.max(60, this.cover) : 104) - this.top) * ease
+    this.bottom += ((compact ? Math.max(tall ? 92 : 10, this.under) : 104) - this.bottom) * ease
+    const usable = w - left - this.right, room = h - this.top - this.bottom
+    const S = Math.max(4, Math.min(usable / this.cam.w, room / this.cam.h))
+    this.fit = { S, cx: left + usable / 2, cy: this.top + room / 2, max: Math.max(1, 60 / S) }
+    const v = this.view
+    v.z = Math.min(this.fit.max, Math.max(1, v.z))
+    this.S = S * v.z
+    const mx = Math.max(0, (this.cam.w * this.S - usable) / 2), my = Math.max(0, (this.cam.h * this.S - room) / 2)
+    v.x = Math.min(mx, Math.max(-mx, v.x))
+    v.y = Math.min(my, Math.max(-my, v.y))
+    this.ox = this.fit.cx - (this.cam.x + this.cam.w / 2) * this.S + v.x
+    this.oy = this.fit.cy - (this.cam.y + this.cam.h / 2) * this.S + v.y
+    // 아래에서 올라온 패널이 고른 대상을 가리면 그만큼 보드를 올린다.
+    const at = compact && tall && open ? this.center(sel!) : null
+    this.lift += ((at ? Math.max(0, this.sy(at.y) - (h * 0.54 - 84)) : 0) - this.lift) * ease
+    this.oy -= this.lift
+    if (v.z > 1.03 !== this.zoomed) { this.zoomed = !this.zoomed; this.onZoom(this.zoomed) }
     this.dashed += dt * 26
+  }
+
+  private center(s: NonNullable<Selection>) {
+    if (s.type === 'node') return this.game.nodes.get(s.id) ?? null
+    const l = this.game.links.get(s.id), p = l && this.path(l)
+    return p ? this.at(p, 0.5, 0) : null
   }
 
   private path(l: GLink): Path | null {
@@ -122,12 +174,12 @@ export class Board {
     let best: GNode | null = null, bd = Infinity
     for (const n of this.game.nodes.values()) {
       const d = Math.hypot(px - this.sx(n.x), py - this.sy(n.y))
-      if (d < (this.radius(n) + extra) * this.S && d < bd) { best = n; bd = d }
+      if (d < Math.max((this.radius(n) + extra) * this.S, this.touch ? 24 : 0) && d < bd) { best = n; bd = d }
     }
     return best
   }
   private linkAt(px: number, py: number) {
-    let best: GLink | null = null, bd = 13
+    let best: GLink | null = null, bd = this.touch ? 22 : 13
     for (const l of this.game.links.values()) {
       const p = this.path(l)
       for (const q of p?.pts ?? []) {
@@ -142,28 +194,64 @@ export class Board {
     if (e.button !== 0 || !this.game.ready || this.game.head.over) return
     const { x, y } = this.pos(e)
     this.cv.setPointerCapture(e.pointerId)
+    this.touch = e.pointerType !== 'mouse'
+    this.pointers.set(e.pointerId, { x, y })
+    if (this.pointers.size > 1) {
+      this.drag = this.pan = null
+      this.mouse.inside = false
+      this.pinch = this.spread()
+      return
+    }
+    this.mouse = { x, y, inside: true }
     if (this.ui.tool !== 'connect') return
     const n = this.nodeAt(x, y)
     if (n && n.kind !== DB && !n.draining) this.drag = { from: n.id, x, y, moved: false }
+    else if (this.zoomed) this.pan = { x, y, vx: this.view.x, vy: this.view.y, moved: false }
+  }
+
+  private spread() {
+    const [a, b] = [...this.pointers.values()]
+    return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  }
+
+  // 두 손가락 가운데에 있던 보드 위치가 손가락을 따라오게 한다.
+  private zoom() {
+    const p = this.pinch!, q = this.spread(), f = this.fit, c = this.cam
+    const z = Math.min(f.max, Math.max(1, (this.view.z * q.d) / p.d)), S = f.S * z
+    const bx = (p.x - this.ox) / this.S, by = (p.y - this.oy) / this.S
+    this.view = { z, x: q.x - bx * S - f.cx + (c.x + c.w / 2) * S, y: q.y - by * S - f.cy + (c.y + c.h / 2) * S }
+    this.S = S; this.ox = q.x - bx * S; this.oy = q.y - by * S
+    this.pinch = q
   }
 
   private move(e: PointerEvent) {
     const { x, y } = this.pos(e)
+    if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x, y })
+    if (this.pinch) { if (this.pointers.size > 1) this.zoom(); return }
     this.mouse = { x, y, inside: true }
+    if (this.pan) {
+      const dx = x - this.pan.x, dy = y - this.pan.y
+      if (Math.hypot(dx, dy) > 7) this.pan.moved = true
+      if (this.pan.moved) { this.view.x = this.pan.vx + dx; this.view.y = this.pan.vy + dy }
+    }
     if (this.drag && Math.hypot(x - this.drag.x, y - this.drag.y) > 7) this.drag.moved = true
     this.cv.style.cursor = this.ui.tool !== 'connect' ? 'copy' : this.drag?.moved ? 'crosshair' : this.nodeAt(x, y) ? 'grab' : this.linkAt(x, y) ? 'pointer' : 'default'
   }
 
   private up(e: PointerEvent) {
+    this.pointers.delete(e.pointerId)
+    if (this.pinch) { if (!this.pointers.size) this.pinch = null; return }
     if (e.button !== 0 || !this.game.ready) return
     const { x, y } = this.pos(e)
-    const d = this.drag
-    this.drag = null
+    const d = this.drag, panned = this.pan?.moved
+    this.drag = this.pan = null
+    if (this.touch) this.mouse.inside = false
+    if (panned) return
     if (this.ui.tool !== 'connect') {
       const c = this.cell(x, y)
       const why = this.buildError(c.x, c.y)
       if (why) return this.game.say(why, true)
-      this.game.send('build', { ...c, kind: this.ui.tool }).then((a) => { if (a.ok && a.id) { this.onSelect({ type: 'node', id: a.id }); this.onTool('connect') } })
+      this.game.send('build', { x: this.game.flip ? c.y : c.x, y: this.game.flip ? c.x : c.y, kind: this.ui.tool }).then((a) => { if (a.ok && a.id) { this.onSelect({ type: 'node', id: a.id }); this.onTool('connect') } })
       return
     }
     if (d?.moved) {
@@ -185,10 +273,10 @@ export class Board {
 
   linkError(a: GNode | undefined, b: GNode): string | null {
     if (!a) return '연결할 대상이 없습니다'
-    if (a.kind === SOURCE && b.kind === DB) return '요청은 API 처리를 먼저 거쳐야 합니다'
+    if (a.kind === SOURCE && b.kind === DB) return '요청은 서버 처리를 먼저 거쳐야 합니다'
     if (b.kind === SOURCE) return '응답은 같은 링크로 돌아오므로 따로 연결하지 않아도 됩니다'
     if (a.kind === b.kind) return '같은 종류끼리는 연결할 수 없습니다'
-    if (a.draining || b.draining) return '철거 중인 서버입니다'
+    if (a.draining || b.draining) return '철거 중이라 연결할 수 없습니다'
     for (const l of this.game.links.values()) if (l.from === a.id && l.to === b.id) return l.draining ? '철거가 끝난 뒤 다시 연결할 수 있습니다' : '이미 연결되어 있습니다'
     const cost = this.linkCost(a, b)
     if (cost > this.game.head.budget) return `예산이 부족합니다 (필요 ${cost})`
@@ -199,9 +287,9 @@ export class Board {
     const { config: c, head } = this.game, a = head.area
     if (x < a.x + 1 || y < a.y + 1 || x > a.x + a.w - 2 || y > a.y + a.h - 2) return '아직 쓸 수 없는 자리입니다'
     for (const n of this.game.nodes.values()) if (Math.hypot(n.x - x, n.y - y) < c.minNodeGap) return '다른 노드와 너무 가깝습니다'
-    for (const s of c.sources) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 발생지가 들어올 자리입니다'
-    for (const s of head.upcoming) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 발생지가 들어올 자리입니다'
-    if (head.servers >= c.maxServers) return `서버는 모두 ${c.maxServers}대까지 놓을 수 있습니다`
+    for (const s of c.sources) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 클라이언트가 들어올 자리입니다'
+    for (const s of head.upcoming) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 클라이언트가 들어올 자리입니다'
+    if (head.servers >= c.maxServers) return `서버와 DB는 모두 ${c.maxServers}대까지 놓을 수 있습니다`
     const cost = this.ui.tool === 'db' ? head.dbCost : head.apiCost
     if (cost > head.budget) return `예산이 부족합니다 (필요 ${cost})`
     return null
@@ -238,6 +326,14 @@ export class Board {
     g.strokeStyle = '#d5daee'
     g.lineWidth = 1.5
     g.beginPath(); g.roundRect(x, y, c.w * S, c.h * S, S * 0.7); g.fill(); g.stroke()
+    const t = this.grow ? (performance.now() - this.grow.at) / 2600 : 1
+    if (t < 1) {
+      const o = this.grow!.from
+      g.globalAlpha = 0.32 * (1 - t)
+      g.fillStyle = C.peri
+      g.beginPath(); g.roundRect(x, y, c.w * S, c.h * S, S * 0.7); g.roundRect(this.ox + o.x * S, this.oy + o.y * S, o.w * S, o.h * S, S * 0.7); g.fill('evenodd')
+      g.globalAlpha = 1
+    } else this.grow = null
     g.fillStyle = C.dot
     // 보드가 넓어지면 점이 천 개를 넘으므로 한 번에 그린다.
     const r = Math.max(1.6, S * 0.065)
@@ -584,7 +680,7 @@ export class Board {
     g.globalAlpha = 0.6 + 0.3 * Math.sin(now / 250)
     g.beginPath(); g.arc(x, y, S * 0.62, 0, 7); g.stroke()
     g.setLineDash([]); g.globalAlpha = 1
-    this.pill(`새 발생지 ${Math.max(0, Math.ceil((u.at - this.game.rt) / this.game.config.tps))}초`, x, y - S, C.coralLow, 'clock')
+    this.pill(`새 클라이언트 ${Math.max(0, Math.ceil((u.at - this.game.rt) / this.game.config.tps))}초`, x, y - S, C.coralLow, 'clock')
   }
 
   private ghostLink(from: GNode) {
@@ -600,7 +696,7 @@ export class Board {
     g.setLineDash([S * 0.22, S * 0.24]); g.lineDashOffset = -this.dashed
     g.beginPath(); g.moveTo(this.sx(from.x), this.sy(from.y)); g.lineTo(ex, ey); g.stroke()
     g.setLineDash([]); g.globalAlpha = 1
-    if (to) this.pill(why ?? `연결 비용 ${this.linkCost(from, to)}`, ex, ey + S * 1.35, why ? C.red : C.periLow, why ? 'stop' : undefined)
+    if (to) this.pill(why ?? `연결 비용 ${this.linkCost(from, to)}`, ex, ey + (this.touch ? -1.9 : 1.35) * S, why ? C.red : C.periLow, why ? 'stop' : undefined)
   }
 
   private ghostServer() {
@@ -613,7 +709,7 @@ export class Board {
     g.strokeStyle = why ? C.red : db ? C.mint : C.peri; g.lineWidth = 2.5; g.setLineDash([6, 5]); g.stroke(); g.setLineDash([])
     g.globalAlpha = 1
     const h = this.game.head
-    this.pill(why ?? (db ? `DB 샤드 ${h.dbCost}` : `API 추가 ${h.apiCost}`), x, y + S * 1.25, why ? C.red : db ? C.mintLow : C.periLow, why ? 'stop' : undefined)
+    this.pill(why ?? (db ? `DB 샤드 ${h.dbCost}` : `서버 추가 ${h.apiCost}`), x, y + (this.touch ? -1.9 : 1.25) * S, why ? C.red : db ? C.mintLow : C.periLow, why ? 'stop' : undefined)
   }
 
   private hint(h: Hint, now: number) {

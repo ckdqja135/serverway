@@ -23,9 +23,9 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
           <input inputMode="numeric" maxLength={6} value={seed} placeholder="비우면 무작위" onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} /></label>
         {error && <p className="err" role="alert">{error}</p>}
         <ul className="rules">
-          <li><b>왕복</b>요청은 API와 DB를 거친 뒤 응답으로 돌아와야 완료됩니다.</li>
-          <li><b>체증</b>서버가 꽉 차면 트래픽이 링크 위에 밀려 뒤로 번집니다.</li>
-          <li><b>성장</b>트래픽과 발생지가 끝없이 늘어납니다. 번 예산으로 API, DB 샤드, 링크를 늘리세요.</li>
+          <li><b>왕복</b>요청은 서버와 DB를 거친 뒤 응답으로 돌아와야 완료됩니다.</li>
+          <li><b>체증</b>서버나 DB가 꽉 차면 트래픽이 링크 위에 밀려 뒤로 번집니다.</li>
+          <li><b>성장</b>트래픽과 클라이언트가 끝없이 늘어납니다. 번 예산으로 서버, DB 샤드, 링크를 늘리세요.</li>
         </ul>
         <p className="fine">화면의 요청과 서버는 모두 게임 안의 가상 객체입니다. 실제 서버나 네트워크에는 아무것도 보내지 않습니다.</p>
       </div>

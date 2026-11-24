@@ -120,7 +120,7 @@ func (s *Sim) exec(c Command) (int, error) {
 	return 0, fmt.Errorf("알 수 없는 명령입니다")
 }
 
-// CanBuild는 서버를 놓을 수 있는 칸인지 확인한다. 나타날 예정인 발생지 자리도 비워 둔다.
+// CanBuild는 서버를 놓을 수 있는 칸인지 확인한다. 나타날 예정인 클라이언트 자리도 비워 둔다.
 func (s *Sim) CanBuild(x, y int) error {
 	if a := s.Area(); x < a.X+1 || y < a.Y+1 || x > a.X+a.W-2 || y > a.Y+a.H-2 {
 		return fmt.Errorf("아직 쓸 수 없는 자리입니다")
@@ -133,12 +133,12 @@ func (s *Sim) CanBuild(x, y int) error {
 	}
 	for _, d := range s.Cfg.Sources {
 		if dist(x, y, d.X, d.Y) < gap {
-			return fmt.Errorf("새 발생지가 들어올 자리입니다")
+			return fmt.Errorf("새 클라이언트가 들어올 자리입니다")
 		}
 	}
 	for _, c := range s.Coming {
 		if dist(x, y, c.X, c.Y) < gap {
-			return fmt.Errorf("새 발생지가 들어올 자리입니다")
+			return fmt.Errorf("새 클라이언트가 들어올 자리입니다")
 		}
 	}
 	return nil
@@ -146,7 +146,7 @@ func (s *Sim) CanBuild(x, y int) error {
 
 func (s *Sim) build(k Kind, x, y int) (int, error) {
 	if s.count(API)+s.count(DB) >= s.Cfg.MaxServers {
-		return 0, fmt.Errorf("서버는 모두 %d대까지 놓을 수 있습니다", s.Cfg.MaxServers)
+		return 0, fmt.Errorf("서버와 DB는 모두 %d대까지 놓을 수 있습니다", s.Cfg.MaxServers)
 	}
 	if err := s.CanBuild(x, y); err != nil {
 		return 0, err
@@ -167,13 +167,13 @@ func (s *Sim) CanLink(a, b *Node) error {
 	case a.ID == b.ID:
 		return fmt.Errorf("자기 자신에게는 연결할 수 없습니다")
 	case a.Draining || b.Draining:
-		return fmt.Errorf("철거 중인 서버입니다")
+		return fmt.Errorf("철거 중이라 연결할 수 없습니다")
 	case a.Kind == Source && b.Kind == DB:
-		return fmt.Errorf("요청은 API 처리를 먼저 거쳐야 합니다")
+		return fmt.Errorf("요청은 서버 처리를 먼저 거쳐야 합니다")
 	case a.Kind == DB:
-		return fmt.Errorf("연결은 API에서 DB 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
+		return fmt.Errorf("연결은 서버에서 DB 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
 	case b.Kind == Source:
-		return fmt.Errorf("연결은 발생지에서 API 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
+		return fmt.Errorf("연결은 클라이언트에서 서버 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
 	case a.Kind == b.Kind:
 		return fmt.Errorf("같은 종류끼리는 연결할 수 없습니다")
 	}
@@ -214,7 +214,7 @@ func (s *Sim) upgradeNode(id int) error {
 		return fmt.Errorf("업그레이드할 수 없는 대상입니다")
 	}
 	if n.Draining {
-		return fmt.Errorf("철거 중인 서버입니다")
+		return fmt.Errorf("철거 중이라 업그레이드할 수 없습니다")
 	}
 	if n.Level+1 >= maxLevel {
 		return fmt.Errorf("더 올릴 수 없습니다")

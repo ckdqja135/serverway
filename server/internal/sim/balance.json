@@ -1,10 +1,10 @@
 {
   "phaseSeconds": 45,
   "areas": [
-    { "atSec": 0, "x": 2, "y": 2, "w": 17, "h": 10 },
-    { "atSec": 48, "x": 1, "y": 0, "w": 19, "h": 13 },
-    { "atSec": 118, "x": 0, "y": 0, "w": 21, "h": 15 },
-    { "atSec": 190, "x": 0, "y": 0, "w": 28, "h": 15 }
+    { "atPhase": 0, "x": 2, "y": 2, "w": 17, "h": 10 },
+    { "atPhase": 1, "x": 1, "y": 0, "w": 19, "h": 13 },
+    { "atPhase": 2, "x": 0, "y": 0, "w": 21, "h": 15 },
+    { "atPhase": 3, "x": 0, "y": 0, "w": 28, "h": 15 }
   ],
   "initialBudget": 90,
   "phaseIncome": [60, 75, 90, 100, 110, 115, 120, 120, 120],
@@ -60,7 +60,7 @@
     "sourceFromSec": 350, "sourceEverySec": 55, "sourceMinEverySec": 32, "sourceNoticeSec": 15,
     "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 200, "surgeFromMin": 8, "surgePerMin": 5,
     "faultFromSec": 400, "faultEverySec": 70, "faultMinEverySec": 40,
-    "expandFromSec": 240, "expandEverySec": 55, "maxW": 60, "maxH": 32,
+    "expandW": 5, "expandH": 3, "maxW": 60, "maxH": 32,
     "incomeStep": 5, "phaseStepSec": 5, "phaseMaxSec": 75
   },
   "ranks": [

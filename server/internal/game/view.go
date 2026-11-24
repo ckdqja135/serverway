@@ -35,12 +35,12 @@ type nodeView struct {
 	Done     int       `json:"done"`
 	Fail     [4]int    `json:"fail"`
 	Spawned  int       `json:"spawned"`
-	Rate     int       `json:"rate"`     // 발생지: 초당 요청 1000배
+	Rate     int       `json:"rate"`     // 클라이언트: 초당 요청 1000배
 	NextRate int       `json:"nextRate"` // 30초 뒤 예상
 	Upgrade  int       `json:"upgrade"`  // 다음 레벨 비용
 	Next     *upView   `json:"next,omitempty"`
 	Refund   int       `json:"refund"`
-	Routed   bool      `json:"routed"` // 발생지: 완료까지 이어지는 길이 있는지
+	Routed   bool      `json:"routed"` // 클라이언트: 완료까지 이어지는 길이 있는지
 }
 
 type upView struct {
@@ -273,19 +273,19 @@ func makeResult(s *sim.Sim) *result {
 	total := f[0] + f[1] + f[2] + f[3]
 	switch {
 	case s.Completed == 0 && total == 0:
-		r.Advice = "아직 처리한 요청이 없습니다. 발생지를 API에, API를 DB에 연결하고 시작해 보세요."
+		r.Advice = "아직 처리한 요청이 없습니다. 클라이언트를 서버에, 서버를 DB에 연결하고 시작해 보세요."
 	case total == 0:
 		r.Advice = "실패한 요청이 하나도 없었습니다. 완벽한 운영입니다."
 	case f[sim.FailNoRoute]*2 >= total:
-		r.Advice = "길이 없어 실패한 요청이 가장 많았습니다. 모든 발생지를 API에, 모든 API를 DB에 연결하세요."
+		r.Advice = "길이 없어 실패한 요청이 가장 많았습니다. 모든 클라이언트를 서버에, 모든 서버를 DB에 연결하세요."
 	case f[sim.FailFault]*2 >= total:
-		r.Advice = "장애로 실패한 요청이 가장 많았습니다. 예고가 뜨면 다른 API를 키우고 우회 링크를 준비하세요."
+		r.Advice = "장애로 실패한 요청이 가장 많았습니다. 예고가 뜨면 다른 서버를 키우고 우회 링크를 준비하세요."
 	case db >= api && db >= src:
-		r.Advice = "DB에서 가장 많이 막혔습니다. API를 늘리기 전에 DB를 업그레이드하거나 샤드를 추가하세요."
+		r.Advice = "DB에서 가장 많이 막혔습니다. 서버를 늘리기 전에 DB를 업그레이드하거나 샤드를 추가하세요."
 	case api >= src:
-		r.Advice = "API에서 가장 많이 막혔습니다. API를 업그레이드하거나 추가하고 발생지를 여러 API에 연결하세요."
+		r.Advice = "서버에서 가장 많이 막혔습니다. 서버를 업그레이드하거나 추가하고 클라이언트를 여러 서버에 연결하세요."
 	default:
-		r.Advice = "발생지에서 나가지 못한 요청이 많았습니다. 링크 용량을 늘리거나 링크를 하나 더 만드세요."
+		r.Advice = "클라이언트에서 나가지 못한 요청이 많았습니다. 링크 용량을 늘리거나 링크를 하나 더 만드세요."
 	}
 	return r
 }

@@ -9,7 +9,7 @@ const (
 )
 
 // Practice는 튜토리얼용 설정이다. 비용과 처리 능력은 그대로 두고, 시간에 따라 저절로 일어나는 일을 모두 끈다.
-// 발생지, 트래픽, 장애, 보상은 scene 명령이 왔을 때만 일어나며 지지 않는다.
+// 클라이언트, 트래픽, 장애, 보상은 scene 명령이 왔을 때만 일어나며 지지 않는다.
 func Practice(base *Config) *Config {
 	c := *base
 	c.Practice = true
@@ -17,7 +17,7 @@ func Practice(base *Config) *Config {
 	c.InitialBudget = practiceRefill
 	c.Health.LearnSeconds = 1 << 20
 	c.Request.StartSec = 1
-	c.Areas = []Area{{X: 2, Y: 2, W: 17, H: 10}}
+	c.Areas = []Area{{X: 3, Y: 3, W: 16, H: 8}, {AtPhase: 1, X: 1, Y: 2, W: 20, H: 10}}
 	c.Sources = []SourceDef{{X: 5, Y: 9}, {X: 6, Y: 5, AppearSec: 1 << 20}}
 	c.StartAPI, c.DB0 = Pos{X: 10, Y: 9}, Pos{X: 16, Y: 7}
 	c.Faults = nil

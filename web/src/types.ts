@@ -45,8 +45,8 @@ export const FAIL = [
   { code: 500, name: '장애로 처리 불가', http: 'Server Error' },
 ]
 export const FAULT_TEXT: Record<Fault['type'], { title: string; effect: (f: Fault) => string; tip: string }> = {
-  api_slow: { title: 'GC 지연', effect: (f) => `처리 속도 ${f.percent}%로 저하`, tip: '다른 API로 나눠 보낼 링크를 만들어 두세요' },
-  api_down: { title: '배포 실패', effect: () => '재시작하는 동안 처리 중단', tip: '다른 API를 키우고 우회 링크를 준비하세요' },
-  link_block: { title: '회선 단선', effect: () => '새 요청과 응답이 지나갈 수 없음', tip: '같은 발생지에서 다른 API로 링크를 하나 더 만드세요' },
+  api_slow: { title: 'GC 지연', effect: (f) => `처리 속도 ${f.percent}%로 저하`, tip: '다른 서버로 나눠 보낼 링크를 만들어 두세요' },
+  api_down: { title: '배포 실패', effect: () => '재시작하는 동안 처리 중단', tip: '다른 서버를 키우고 우회 링크를 준비하세요' },
+  link_block: { title: '회선 단선', effect: () => '새 요청과 응답이 지나갈 수 없음', tip: '같은 클라이언트에서 다른 서버로 링크를 하나 더 만드세요' },
 }
-export const nodeName = (n: GNode) => (n.kind === SOURCE ? `발생지 ${n.index}` : n.kind === API ? `API ${n.index}` : `DB ${n.index}`)
+export const nodeName = (n: GNode) => (n.kind === SOURCE ? `클라이언트 ${n.index}` : n.kind === API ? `서버 ${n.index}` : `DB ${n.index}`)
