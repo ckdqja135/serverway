@@ -10,7 +10,9 @@ const C = {
 }
 const MAX_DOTS = 420
 
-export interface UIState { selection: Selection; tool: Tool; hint: 'src' | 'db' | null }
+// Hint는 안내 표시다. drag는 끌어서 이을 두 노드, 나머지는 눌러야 할 대상이다.
+export interface Hint { drag?: [number, number]; node?: number; link?: number; spot?: { x: number; y: number } }
+export interface UIState { selection: Selection; tool: Tool; hint: Hint | null }
 // 레벨이 높아도 화면의 가닥 수는 4개까지만 늘린다.
 export const strands = (level: number) => Math.min(4, level + 1)
 
@@ -224,7 +226,7 @@ export class Board {
     for (const n of this.game.nodes.values()) this.badge(n)
     this.faults(now)
     this.effects(now)
-    if (this.ui.hint) this.hint(now)
+    if (this.ui.hint) this.hint(this.ui.hint, now)
     if (drag) this.ghostLink(drag)
     if (this.ui.tool !== 'connect' && this.mouse.inside) this.ghostServer()
   }
@@ -614,11 +616,11 @@ export class Board {
     this.pill(why ?? (db ? `DB 샤드 ${h.dbCost}` : `API 추가 ${h.apiCost}`), x, y + S * 1.25, why ? C.red : db ? C.mintLow : C.periLow, why ? 'stop' : undefined)
   }
 
-  private hint(now: number) {
-    const nodes = [...this.game.nodes.values()]
-    const pick = (k: number) => nodes.find((n) => n.kind === k)
-    const a = pick(this.ui.hint === 'src' ? SOURCE : API), b = pick(this.ui.hint === 'src' ? API : DB)
-    if (!a || !b || this.drag?.moved) return
+  private hint(h: Hint, now: number) {
+    if (this.drag?.moved) return
+    if (!h.drag) return this.hintRing(h, now)
+    const a = this.game.nodes.get(h.drag[0]), b = this.game.nodes.get(h.drag[1])
+    if (!a || !b) return
     const t = (now / 1700) % 1.25
     const k = Math.min(1, t), e = k * k * (3 - 2 * k)
     const g = this.ctx, S = this.S
@@ -628,6 +630,23 @@ export class Board {
     g.globalAlpha = 1
     g.fillStyle = '#fff'; g.strokeStyle = C.periLow; g.lineWidth = 3
     g.beginPath(); g.arc(x, y, S * 0.2, 0, 7); g.fill(); g.stroke()
+  }
+
+  private hintRing(h: Hint, now: number) {
+    const sel = this.ui.selection
+    if (sel && sel.id === (sel.type === 'node' ? h.node : h.link)) return
+    const n = h.node ? this.game.nodes.get(h.node) : undefined
+    const l = h.link ? this.game.links.get(h.link) : undefined
+    const p = l && this.path(l)
+    const at = n ?? (p ? this.at(p, 0.5, 0) : h.spot)
+    if (!at) return
+    const g = this.ctx, S = this.S, x = this.sx(at.x), y = this.sy(at.y), wave = 0.5 + 0.5 * Math.sin(now / 260)
+    g.strokeStyle = C.peri; g.lineWidth = 4; g.globalAlpha = 0.45 + 0.55 * wave
+    g.beginPath()
+    if (h.spot) { g.setLineDash([8, 7]); this.hex(x, y, S * 0.82) }
+    else g.arc(x, y, ((n ? this.radius(n) + 0.28 : 0.5) + wave * 0.14) * S, 0, 7)
+    g.stroke()
+    g.setLineDash([]); g.globalAlpha = 1
   }
 }
 

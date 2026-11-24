@@ -164,6 +164,7 @@ type Config struct {
 	DB0      Pos         `json:"db0"`
 	Faults   []FaultDef  `json:"faults"`
 	Rewards  []RewardDef `json:"rewards"`
+	Practice bool        `json:"-"` // 튜토리얼
 }
 
 //go:embed balance.json

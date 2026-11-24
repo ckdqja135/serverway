@@ -205,6 +205,7 @@ type Sim struct {
 	faultN   int
 	sourceAt int // 다음 마라톤 발생지가 나타나는 틱
 	sourceN  int
+	load     int // 튜토리얼: 발생지마다 초당 요청 수의 1000배
 	lastSeq  int64
 	lats     [100]int // 최근 완료 요청의 왕복 틱 수
 	latN     int
@@ -213,7 +214,7 @@ type Sim struct {
 }
 
 func New(cfg *Config, seed uint64) *Sim {
-	s := &Sim{Cfg: cfg, Seed: seed, rng: seed, Speed: 1, Paused: true, Health: cfg.Health.Max, Budget: cfg.InitialBudget, acks: map[int64]Ack{}}
+	s := &Sim{Cfg: cfg, Seed: seed, rng: seed, Speed: 1, Paused: true, Health: cfg.Health.Max, Budget: cfg.InitialBudget, load: practiceLoad, acks: map[int64]Ack{}}
 	for i, d := range cfg.Sources {
 		if d.AppearSec == 0 {
 			s.addSource(i)
@@ -420,6 +421,9 @@ func (s *Sim) Rate(n *Node, tick int) int { return s.baseRate(n, tick) * s.Surge
 
 // baseRate는 설정 지점 사이를 부드럽게 잇는다.
 func (s *Sim) baseRate(n *Node, tick int) int {
+	if s.Cfg.Practice {
+		return s.load
+	}
 	e := s.Cfg.Endless
 	if n.Def < 0 {
 		t := tick - n.Born

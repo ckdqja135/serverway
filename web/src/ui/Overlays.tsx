@@ -1,7 +1,8 @@
-import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Shuffle, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, type Best } from '../types'
+import { WhenToGrow } from './Lesson'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
@@ -77,20 +78,23 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
   )
 }
 
-export function Menu({ g, onClose, onHome, onRestart, tutorial, setTutorial, log, setLog, onHelp }: {
-  g: GameClient; onClose: () => void; onHome: () => void; onRestart: (seed?: number) => void; tutorial: boolean; setTutorial: (b: boolean) => void; log: boolean; setLog: (b: boolean) => void; onHelp: () => void
+export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutorial, log, setLog, onHelp }: {
+  g: GameClient; onSkip: () => void; onClose: () => void; onHome: () => void; onRestart: (seed?: number) => void; tutorial: boolean; setTutorial: (b: boolean) => void; log: boolean; setLog: (b: boolean) => void; onHelp: () => void
 }) {
+  const practice = g.config.practice
   return (
     <div className="veil" role="dialog" aria-modal aria-label="설정" onClick={onClose}>
       <div className="modal small" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="닫기"><X size={16} /></button>
         <h2>설정</h2>
-        <label className="check"><input type="checkbox" checked={tutorial} onChange={(e) => setTutorial(e.target.checked)} />안내 말풍선 보기</label>
+        {!practice && <label className="check"><input type="checkbox" checked={tutorial} onChange={(e) => setTutorial(e.target.checked)} />안내 말풍선 보기</label>}
         <label className="check"><input type="checkbox" checked={log} onChange={(e) => setLog(e.target.checked)} />요청 로그 보기</label>
         <button onClick={onHelp}><BookOpen size={16} aria-hidden />게임 규칙과 조작법</button>
+        {practice ? <button onClick={onSkip}><SkipForward size={16} aria-hidden />튜토리얼 건너뛰고 본 게임 시작</button> : <>
         <button onClick={() => { onClose(); g.send('finish') }}><Flag size={16} aria-hidden />여기서 마치고 기록 남기기</button>
         <button onClick={() => onRestart(g.seed)}><RotateCcw size={16} aria-hidden />같은 시드로 처음부터</button>
-        <button onClick={onHome}><House size={16} aria-hidden />나가기 (게임은 30분 동안 보관)</button>
+        </>}
+        <button onClick={onHome}><House size={16} aria-hidden />{practice ? '나가기' : '나가기 (게임은 30분 동안 보관)'}</button>
         <button className="primary" autoFocus onClick={onClose}><Play size={16} aria-hidden />돌아가기</button>
       </div>
     </div>
@@ -103,6 +107,8 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
     <div className="veil" role="dialog" aria-modal aria-label="게임 규칙과 조작법" onClick={onClose}>
       <div className="modal help" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="닫기" autoFocus><X size={16} /></button>
+        <h2>언제 무엇을 늘리나</h2>
+        <WhenToGrow />
         <h2>게임 규칙</h2>
         <ul>
           <li>요청은 발생지, API, DB 순서로 처리된 뒤 <b>지나온 링크로 되돌아와야</b> 완료됩니다. 완료 하나에 {c.score}점입니다.</li>
@@ -112,7 +118,7 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
           <li><b>경로 선택:</b> 지금 보낼 수 있는 링크 중 이동 시간과 도착지 예상 대기를 더한 값이 가장 짧은 곳으로 갑니다. 같으면 먼저 만든 링크입니다.</li>
           <li><b>서버 용량:</b> 육각형 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
           <li><b>링크 용량:</b> 한 차선이 초당 보낼 수 있는 수입니다. 가는 차선과 돌아오는 차선은 따로입니다.</li>
-          <li><b>실패:</b> 502 경로 없음, 503 발생지 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다. 처음 {c.learnSeconds}초는 지지 않습니다.</li>
+          <li><b>실패:</b> 502 경로 없음, 503 발생지 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다. {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
           <li><b>철거:</b> 새 요청만 막고 이미 나간 요청이 돌아온 뒤 사라집니다. 비용의 {c.refundPercent}%를 돌려받습니다.</li>
           <li><b>장애:</b> 시작 전에 예고합니다. 대상은 많이 쓰는 API나 링크입니다.</li>
           <li>선이 교차해도 이어지지 않습니다. 실제 네트워크를 단순하게 만든 게임 규칙이며 재시도, 로드밸런서, 데이터 일관성은 다루지 않습니다.</li>

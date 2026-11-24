@@ -5,7 +5,7 @@ import "fmt"
 type Command struct {
 	Seq   int64  `json:"seq"`
 	Type  string `json:"type"`
-	Kind  string `json:"kind,omitempty"` // build: api(기본) 또는 db
+	Kind  string `json:"kind,omitempty"` // build: api(기본) 또는 db, scene: source, traffic, fault, reward
 	X     int    `json:"x,omitempty"`
 	Y     int    `json:"y,omitempty"`
 	From  int    `json:"from,omitempty"`
@@ -52,6 +52,9 @@ func (s *Sim) Apply(c Command) Ack {
 		a.Error = err.Error()
 	} else {
 		s.Log = append(s.Log, LogEntry{s.Tick, c})
+		if s.Cfg.Practice && s.Budget < practiceLow {
+			s.Budget = practiceRefill
+		}
 	}
 	s.acks[c.Seq] = a
 	delete(s.acks, c.Seq-keepAck)
@@ -111,6 +114,8 @@ func (s *Sim) exec(c Command) (int, error) {
 		return c.ID, s.removeNode(c.ID)
 	case "reward":
 		return 0, s.reward(c.Index)
+	case "scene":
+		return 0, s.scene(c)
 	}
 	return 0, fmt.Errorf("알 수 없는 명령입니다")
 }

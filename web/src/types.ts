@@ -21,7 +21,7 @@ export interface Head {
   upcoming: { x: number; y: number; at: number }[]; rps10: number; p95: number; area: Area; cache: number; deadline: number; pauseReason: string
 }
 export interface Config {
-  tps: number; healthMax: number; score: number; linkBase: number; linkPerCell: number
+  practice: boolean; tps: number; healthMax: number; score: number; linkBase: number; linkPerCell: number
   minNodeGap: number; maxServers: number; learnSeconds: number; startSec: number; sources: { x: number; y: number }[]; refundPercent: number; failPenalty: number; faultPercent: number
 }
 export interface Result {

@@ -1,8 +1,9 @@
-import { Dices, Play, RotateCw, Trophy } from 'lucide-react'
+import { Dices, GraduationCap, Play, RotateCw, Trophy } from 'lucide-react'
 import { useState } from 'react'
 import { clockText, loadBest } from '../types'
+import { learned } from './Lesson'
 
-export function Start({ onStart, resume, busy, error }: { onStart: (seed?: number) => void; resume: (() => void) | null; busy: boolean; error: string }) {
+export function Start({ onStart, resume, busy, error }: { onStart: (seed?: number, practice?: boolean) => void; resume: (() => void) | null; busy: boolean; error: string }) {
   const [seed, setSeed] = useState('')
   const best = loadBest()
   return (
@@ -15,7 +16,9 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
         <div className="row">
           {resume && <button className="big" onClick={resume}><RotateCw size={18} aria-hidden />이어서 하기</button>}
           <button className="big primary" disabled={busy} onClick={() => onStart(Number(seed) || undefined)}><Play size={18} aria-hidden />새 게임</button>
+          {learned() && <button className="big" disabled={busy} onClick={() => onStart(Number(seed) || undefined, true)}><GraduationCap size={18} aria-hidden />튜토리얼</button>}
         </div>
+        {!learned() && <p className="fine">처음에는 튜토리얼부터 시작합니다. 언제든 건너뛸 수 있습니다.</p>}
         <label className="seed"><Dices size={15} aria-hidden />시드
           <input inputMode="numeric" maxLength={6} value={seed} placeholder="비우면 무작위" onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} /></label>
         {error && <p className="err" role="alert">{error}</p>}

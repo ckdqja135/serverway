@@ -42,8 +42,8 @@ export class GameClient {
 
   constructor(readonly id: string) { this.open() }
 
-  static async create(seed?: number): Promise<string> {
-    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed: seed ?? 0 }) })
+  static async create(seed?: number, practice = false): Promise<string> {
+    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed: seed ?? 0, practice }) })
     const d = await r.json()
     if (!r.ok) throw new Error(d.error)
     return d.id

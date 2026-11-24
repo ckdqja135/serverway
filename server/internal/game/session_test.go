@@ -131,7 +131,7 @@ func TestIdleConnectionStaysOpen(t *testing.T) {
 	m := NewManager(t.Context(), sim.Default())
 	srv := httptest.NewServer(Handler(m, t.TempDir()))
 	defer srv.Close()
-	s, _ := m.Create(1)
+	s, _ := m.Create(1, false)
 	p := dial(t, srv.URL, s.ID)
 	p.until(kind("snapshot"))
 	go func() {

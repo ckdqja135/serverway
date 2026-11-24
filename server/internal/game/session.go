@@ -189,7 +189,7 @@ func (s *Session) snapshot() {
 	s.dirty = false
 	c := s.cfg
 	s.send(map[string]any{"type": "snapshot", "epoch": s.epoch, "seed": s.sim.Seed, "lastSeq": s.sim.LastSeq(),
-		"config": map[string]any{"tps": sim.TPS, "healthMax": c.Health.Max,
+		"config": map[string]any{"practice": c.Practice, "tps": sim.TPS, "healthMax": c.Health.Max,
 			"linkBase": c.Link.BaseCost, "linkPerCell": c.Link.PerCell, "minNodeGap": c.MinNodeGap, "maxServers": c.MaxServers,
 			"learnSeconds": c.Health.LearnSeconds, "startSec": c.Request.StartSec, "sources": reserved(c), "refundPercent": c.RefundPercent,
 			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent},
@@ -222,13 +222,17 @@ func NewManager(ctx context.Context, cfg *sim.Config) *Manager {
 	return &Manager{all: map[string]*Session{}, cfg: cfg, ctx: ctx}
 }
 
-func (m *Manager) Create(seed uint64) (*Session, error) {
+func (m *Manager) Create(seed uint64, practice bool) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.all) >= maxSessions {
 		return nil, fmt.Errorf("동시에 열 수 있는 게임 수를 넘었습니다")
 	}
-	s := newSession(m.cfg, seed)
+	cfg := m.cfg
+	if practice {
+		cfg = sim.Practice(cfg)
+	}
+	s := newSession(cfg, seed)
 	m.all[s.ID] = s
 	go s.run(m.ctx, func() {
 		m.mu.Lock()

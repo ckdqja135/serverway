@@ -28,13 +28,14 @@ func Handler(m *Manager, webDir string) http.Handler {
 			return
 		}
 		var in struct {
-			Seed uint64 `json:"seed"`
+			Seed     uint64 `json:"seed"`
+			Practice bool   `json:"practice"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "요청을 읽을 수 없습니다"})
 			return
 		}
-		s, err := m.Create(in.Seed % 1000000)
+		s, err := m.Create(in.Seed%1000000, in.Practice)
 		if err != nil {
 			writeJSON(w, 503, map[string]string{"error": err.Error()})
 			return

@@ -1,10 +1,11 @@
 import { Database, Hexagon, MousePointer2, Play, ScrollText, WifiOff, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { Board } from './board'
+import { Board, type Hint } from './board'
 import { GameClient } from './client'
 import { API, DB, SOURCE, type Fault, type Selection, type Tool } from './types'
 import { Hud } from './ui/Hud'
 import { Help, Menu, ResultModal, RewardModal } from './ui/Overlays'
+import { LessonCard, LessonEnd, LessonIntro, learned, setLearned, useLesson } from './ui/Lesson'
 import { Panel } from './ui/Panel'
 import { Start } from './ui/Start'
 
@@ -16,6 +17,7 @@ export function App() {
   const [resumeId, setResumeId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [seed, setSeed] = useState<number>()
 
   const check = async () => {
     const id = sessionStorage.getItem(KEY)
@@ -23,19 +25,21 @@ export function App() {
   }
   useEffect(() => { check() }, [])
 
-  const start = async (seed?: number) => {
-    setBusy(true); setError('')
+  // 튜토리얼을 한 번이라도 끝냈거나 건너뛰었으면 바로 본 게임을 시작한다.
+  const start = async (s?: number, practice = !learned()) => {
+    if (busy) return
+    setBusy(true); setError(''); setSeed(s)
     try {
-      const id = await GameClient.create(seed)
-      sessionStorage.setItem(KEY, id)
+      const id = await GameClient.create(s, practice)
+      if (!practice) sessionStorage.setItem(KEY, id)
       setGame(new GameClient(id))
-    } catch (e) { setError((e as Error).message || '게임 서버에 연결할 수 없습니다') } finally { setBusy(false) }
+    } catch (e) { setGame(null); setError((e as Error).message || '게임 서버에 연결할 수 없습니다') } finally { setBusy(false) }
   }
   if (!game) return <Start onStart={start} busy={busy} error={error} resume={resumeId ? () => setGame(new GameClient(resumeId)) : null} />
-  return <Play1 key={game.id} g={game} onHome={() => { game.close(); setGame(null); check() }} />
+  return <Play1 key={game.id} g={game} onHome={() => { game.close(); setGame(null); check() }} onLearned={() => { setLearned(); start(seed, false) }} />
 }
 
-function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
+function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; onLearned: () => void }) {
   useSyncExternalStore(g.subscribe, g.getVersion)
   const cv = useRef<HTMLCanvasElement>(null)
   const board = useRef<Board | null>(null)
@@ -60,14 +64,17 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
   useEffect(() => { select(null); setTool('connect') }, [g.resets])
 
   const h = g.ready ? g.head : null
+  const overlay = menu || help
+  const [hidden, setHidden] = useState(document.hidden)
   const step = useTutorial(g)
-  if (board.current) board.current.ui = { selection: sel, tool, hint: tutorial && step?.hint ? step.hint : null }
+  const lesson = useLesson(g, overlay || hidden)
+  const tips = tutorial && !lesson
+  if (board.current) board.current.ui = { selection: sel, tool, hint: (lesson ? lesson.step?.hint?.(g) : tips && step?.hint) || null }
 
   // 메뉴가 열리거나 창이 가려지면 게임을 멈춘다.
-  const overlay = menu || help
   useEffect(() => { if (overlay && g.ready && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }, [overlay])
   useEffect(() => {
-    const hide = () => { if (document.hidden && g.ready && g.status === 'open' && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }
+    const hide = () => { setHidden(document.hidden); if (document.hidden && g.ready && g.status === 'open' && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }
     document.addEventListener('visibilitychange', hide)
     return () => document.removeEventListener('visibilitychange', hide)
   }, [g])
@@ -84,6 +91,7 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
         return
       }
       if (menu || help || g.head.reward || g.head.over || e.repeat) return
+      if (lesson && (lesson.stage !== 'steps' || ' sS'.includes(e.key))) return // 튜토리얼은 시간을 스스로 다룬다
       if (e.key === ' ') { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); g.send('pause', { on: !g.head.paused }) }
       else if (e.key === 's' || e.key === 'S') g.send('speed', { speed: (g.head.speed % 3) + 1 })
       else if (e.key === '1') setTool('connect')
@@ -94,7 +102,7 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [g, sel, tool, confirm, menu, help])
+  }, [g, sel, tool, confirm, menu, help, lesson?.stage])
 
   useEffect(() => {
     if (!g.notice) return
@@ -108,7 +116,7 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
   const count = (k: number) => [...g.nodes.values()].filter((n) => n.kind === k).length
 
   return (
-    <div className="game">
+    <div className="game" data-focus={lesson?.step?.focus}>
       <canvas ref={cv} aria-label="게임 보드" />
       {h && <>
         <Hud g={g} onMenu={() => setMenu(true)} onFocus={focusFault} />
@@ -120,8 +128,8 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
         </div>
         {log && <LogFeed g={g} onClose={() => setLog(false)} />}
         {!log && <button className="logopen" onClick={() => setLog(true)} aria-label="요청 로그 보기"><ScrollText size={17} /></button>}
-        {tutorial && step && !h.reward && !h.over && <div className="tip" role="status"><p>{step.text}</p>{step.done && <button onClick={step.done}>확인</button>}<button className="x" aria-label="안내 끄기" onClick={() => setTutorial(false)}><X size={14} /></button></div>}
-        {h.paused && !h.over && !h.reward && !overlay && (
+        {tips && step && !h.reward && !h.over && <div className="tip" role="status"><p>{step.text}</p>{step.done && <button onClick={step.done}>확인</button>}<button className="x" aria-label="안내 끄기" onClick={() => setTutorial(false)}><X size={14} /></button></div>}
+        {h.paused && !h.over && !h.reward && !overlay && (!lesson || lesson.step?.id === 'start') && (
           <div className="pausebar">
             <button className="big primary" onClick={() => g.send('pause', { on: false })}><Play size={18} aria-hidden />{h.started ? '계속하기' : '시작'}</button>
             <span>{h.pauseReason || (h.started ? '멈춘 동안에도 건설하고 연결할 수 있습니다' : '시작하기 전에 미리 연결해 둘 수 있습니다')}</span>
@@ -129,7 +137,10 @@ function Play1({ g, onHome }: { g: GameClient; onHome: () => void }) {
         )}
         <RewardModal g={g} />
         <ResultModal g={g} onHome={onHome} onRestart={restart} />
-        {menu && <Menu g={g} onClose={() => setMenu(false)} onHome={onHome} onRestart={restart} tutorial={tutorial} setTutorial={setTutorial} log={log} setLog={setLog} onHelp={() => { setMenu(false); setHelp(true) }} />}
+        {lesson && !overlay && <LessonCard g={g} lesson={lesson} onSkip={onLearned} />}
+        {lesson?.stage === 'intro' && <LessonIntro onNext={lesson.next} onSkip={onLearned} />}
+        {lesson?.stage === 'end' && <LessonEnd onDone={onLearned} onHome={() => { setLearned(); onHome() }} />}
+        {menu && <Menu g={g} onSkip={onLearned} onClose={() => setMenu(false)} onHome={onHome} onRestart={restart} tutorial={tutorial} setTutorial={setTutorial} log={log} setLog={setLog} onHelp={() => { setMenu(false); setHelp(true) }} />}
         {help && <Help g={g} onClose={() => setHelp(false)} />}
         {g.notice && <div key={g.notice.id} className={`toast ${g.notice.bad ? 'bad' : ''}`} role="status">{g.notice.text}</div>}
       </>}
@@ -151,7 +162,7 @@ function LogFeed({ g, onClose }: { g: GameClient; onClose: () => void }) {
   )
 }
 
-interface Step { text: string; hint?: 'src' | 'db'; done?: () => void }
+interface Step { text: string; hint?: Hint; done?: () => void }
 
 // 안내는 실제 게임 상태를 보고 다음 단계로 넘어간다.
 function useTutorial(g: GameClient): Step | null {
@@ -161,9 +172,10 @@ function useTutorial(g: GameClient): Step | null {
     if (!g.ready) return null
     const ok = (k: string) => () => setSeen((s) => ({ ...s, [k]: true }))
     const nodes = [...g.nodes.values()], links = [...g.links.values()], h = g.head
+    const pair = (a: number, b: number): Hint | undefined => { const x = nodes.find((n) => n.kind === a), y = nodes.find((n) => n.kind === b); return x && y && { drag: [x.id, y.id] } }
     const linked = (from: number, to: number) => links.some((l) => g.nodes.get(l.from)?.kind === from && g.nodes.get(l.to)?.kind === to)
-    if (!linked(SOURCE, API)) return { text: '발생지(주황 원)를 누른 채 API(육각형)까지 끌어 놓으세요. 트래픽이 지나갈 길이 생깁니다.', hint: 'src' }
-    if (!linked(API, DB)) return { text: '이번에는 API에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: 'db' }
+    if (!linked(SOURCE, API)) return { text: '발생지(주황 원)를 누른 채 API(육각형)까지 끌어 놓으세요. 트래픽이 지나갈 길이 생깁니다.', hint: pair(SOURCE, API) }
+    if (!linked(API, DB)) return { text: '이번에는 API에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: pair(API, DB) }
     if (!h.started) return { text: '길이 완성됐습니다. 시작을 누르면 첫 트래픽이 출발합니다.' }
     if (h.completed < 2) return { text: '동그라미는 나가는 요청, 초록 네모는 돌아오는 응답입니다. 발생지에 돌아오면 완료입니다.' }
     if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 남은 시간 동안 다른 API를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
