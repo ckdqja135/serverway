@@ -1,7 +1,7 @@
-import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
-import { FAIL, FAULT_TEXT, clockText, loadBest, type Best } from '../types'
+import { FAIL, FAULT_TEXT, clockText, loadBest, type Best, type Result } from '../types'
 import { LOCAL } from '../wire'
 import { WhenToGrow } from './Lesson'
 
@@ -38,10 +38,29 @@ export function RewardModal({ g }: { g: GameClient }) {
   )
 }
 
+// 폰에서는 공유 창을 열고, 그 밖에서는 복사한다. 앱 안의 브라우저는 공유와 클립보드를 막기도 해서 예전 복사 방식까지 쓴다.
+async function shareResult(r: Result): Promise<string> {
+  const text = `[Serverway] ${r.score.toLocaleString()}점\n${clockText(r.seconds)} 동안 버텨 ${r.rank}까지 키웠습니다!\n당신의 관리능력을 테스트해보세요!\n${import.meta.env.VITE_SITE_URL}`
+  const copied = '기록을 복사했습니다. 카톡이나 메신저에 붙여 넣으세요.'
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ text }); return '' } catch (e) { if ((e as Error).name === 'AbortError') return '' }
+  }
+  try { await navigator.clipboard.writeText(text); return copied } catch { /* 아래 방식으로 복사한다 */ }
+  const t = document.createElement('textarea')
+  t.value = text
+  document.body.append(t)
+  t.select()
+  const ok = document.execCommand('copy')
+  t.remove()
+  return ok ? copied : '이 브라우저에서는 복사할 수 없습니다. 다른 브라우저에서 열어 주세요.'
+}
+
 export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void }) {
   const r = g.result
   const [best, setBest] = useState<{ old: Best | null; isNew: boolean } | null>(null)
+  const [note, setNote] = useState('')
   useEffect(() => {
+    setNote('')
     if (!r) return setBest(null)
     const old = loadBest()
     const isNew = r.score > (old?.score ?? 0)
@@ -72,8 +91,10 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
         <div className="row">
           <button onClick={onHome}><House size={16} aria-hidden />처음으로</button>
           <button onClick={() => onRestart(r.seed)}><RotateCcw size={16} aria-hidden />같은 시드 {r.seed}</button>
+          <button onClick={async () => setNote(await shareResult(r))}><Share2 size={16} aria-hidden />기록 공유</button>
           <button className="primary" onClick={() => onRestart()}><Shuffle size={16} aria-hidden />새 시드로 다시</button>
         </div>
+        {note && <p role="status">{note}</p>}
         <p className="fine">시드는 운을 정하는 번호입니다.<br />같은 시드는 이번 판과 같은 운으로, 새 시드는 새로운 운으로 시작합니다.</p>
       </div>
     </div>
