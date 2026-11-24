@@ -1,4 +1,5 @@
 import { FAIL, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Result } from './types'
+import { sfx, type Sfx } from './sound'
 import { host, type Wire } from './wire'
 
 export interface Dot { id: number; link: number; lane: 0 | 1; dep: number; arr: number; stage: number; strand: number; p: number }
@@ -7,6 +8,7 @@ export interface LogLine { id: number; at: number; code: number; text: string }
 export type Status = 'connecting' | 'open' | 'lost' | 'ended'
 
 const MAX_FX = 120
+const DID: Record<string, Sfx> = { link: 'link', build: 'build', upgradeNode: 'up', upgradeLink: 'up', removeLink: 'remove', removeNode: 'remove' } // 명령이 받아들여졌을 때의 소리
 const MAX_LOG = 60
 
 function turn(o: { x: number; y: number; w?: number; h?: number }) {
@@ -85,14 +87,14 @@ export class GameClient {
     if (type === 'speed') this.head = { ...this.head, speed: Number(body.speed) } // 빠르게 눌러도 이어지도록 표시만 먼저 바꾼다
     const seq = ++this.seq
     this.wire.send(JSON.stringify({ epoch: this.epoch, seq, type, ...body }))
-    return new Promise((res) => this.waits.set(seq, (a) => { if (!a.ok && a.error) this.say(a.error, true); res(a) }))
+    return new Promise((res) => this.waits.set(seq, (a) => { if (a.ok && DID[type]) sfx(DID[type]); if (!a.ok && a.error) this.say(a.error, true); res(a) }))
   }
 
   restart(seed?: number) {
     if (this.status === 'open') this.wire?.send(JSON.stringify({ epoch: this.epoch, seq: ++this.seq, type: 'restart', seed: seed ?? 0 }))
   }
 
-  say(text: string, bad = false) { this.notice = { text, bad, id: ++this.noticeId }; this.changed() }
+  say(text: string, bad = false) { if (bad) sfx('bad'); this.notice = { text, bad, id: ++this.noticeId }; this.changed() }
 
   setFlip(on: boolean) {
     if (on === this.flip || !this.ready) return false
@@ -126,6 +128,8 @@ export class GameClient {
     else if (m.type === 'ack') { this.waits.get(m.ack.seq)?.(m.ack); this.waits.delete(m.ack.seq) }
     else if (m.type === 'frame') {
       if (m.head.phase > this.head.phase) this.grew = m.head.area.w * m.head.area.h > this.head.area.w * this.head.area.h
+      if (m.head.reward && !this.head.reward) sfx('reward')
+      if (m.head.over && !this.head.over) sfx(m.head.over === 'done' ? 'finish' : 'over')
       this.head = m.head
       for (const n of m.nodes ?? []) {
         const old = this.nodes.get(n.id)
@@ -203,6 +207,7 @@ export class GameClient {
       case 'in': this.dropDot(e.r!); break
       case 'done':
         this.dropDot(e.r!)
+        sfx('done')
         if (node) this.addFx({ kind: 'done', x: node.x, y: node.y, at: now })
         this.log(e.at, 200, `GET /order ${((e.a ?? 0) / 1000).toFixed(1)}s`)
         break
@@ -211,16 +216,18 @@ export class GameClient {
         const d = this.dropDot(e.r!)
         const at = d ? this.dotPos(d) : null
         const f = FAIL[e.a ?? 0]
+        sfx('fail')
         if (at) this.addFx({ kind: 'fail', x: at.x, y: at.y, at: now, text: String(f.code) })
         else if (node) this.addFx({ kind: 'fail', x: node.x, y: node.y, at: now, text: String(f.code) })
         this.log(e.at, f.code, `GET /order ${((e.b ?? 0) / 1000).toFixed(1)}s ${f.name}`)
         break
       }
       case 'fault':
-        if (e.t === 'ended') this.say('장애가 복구되었습니다')
+        if (e.t === 'notice' || e.t === 'active') sfx('alert')
+        if (e.t === 'ended') { sfx('recover'); this.say('장애가 복구되었습니다') }
         if (e.t === 'canceled') this.say('장애 대상이 사라져 이번 장애는 지나갔습니다')
         break
-      case 'source': this.say('새 클라이언트가 들어왔습니다. 서버로 연결하세요'); break
+      case 'source': sfx('source'); this.say('새 클라이언트가 들어왔습니다. 서버로 연결하세요'); break
     }
   }
 }

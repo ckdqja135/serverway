@@ -4,6 +4,7 @@ import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, type Best, type Result } from '../types'
 import { LOCAL } from '../wire'
 import { WhenToGrow } from './Lesson'
+import { Toggles } from './Toggles'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
@@ -110,6 +111,7 @@ export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutor
       <div className="modal small" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="닫기"><X size={16} /></button>
         <h2>설정</h2>
+        <Toggles />
         {!practice && <label className="check"><input type="checkbox" checked={tutorial} onChange={(e) => setTutorial(e.target.checked)} />안내 말풍선 보기</label>}
         <label className="check"><input type="checkbox" checked={log} onChange={(e) => setLog(e.target.checked)} />요청 로그 보기</label>
         <button onClick={onHelp}><BookOpen size={16} aria-hidden />게임 규칙과 조작법</button>

@@ -6,6 +6,8 @@ import './styles.css'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { guard } from './guard'
+import { startSound } from './sound'
 
 if (import.meta.env.PROD) guard() // 개발 서버에서는 막지 않는다
+startSound()
 createRoot(document.getElementById('root')!).render(<App />)

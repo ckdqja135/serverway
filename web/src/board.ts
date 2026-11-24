@@ -1,13 +1,24 @@
 import type { Dot, GameClient } from './client'
+import { getPref } from './prefs'
 import { API, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
 
-const C = {
-  paper: '#e9ecf7', area: '#f7f8fd', dot: '#cfd5ea', ink: '#2a2d4f', sub: '#6b7095',
+const LIGHT = {
+  paper: '#e9ecf7', area: '#f7f8fd', edge: '#d5daee', dot: '#cfd5ea', ink: '#2a2d4f', sub: '#6b7095', shade: 'rgba(52,58,110,0.10)',
   coral: '#ff8a70', coralTop: '#ffe0d6', coralLow: '#e0745b',
   peri: '#6c7cff', periTop: '#e0e4ff', periLow: '#4f5dd6',
   mint: '#2fb79a', mintTop: '#d3f3ea', mintLow: '#1f8f78',
   amber: '#e39a00', red: '#e0404a', tube: '#ffffff', tubeEdge: '#a7b2e8', violet: '#8c5be8',
+  tubeFull: '#ffe9ea', tubeJam: '#fff4dc', tubeMid: '#dfe3f5', arrow: '#aab3e0', slot: '#ffffff', bead: '#c9cfe6', downTop: '#e7e7ee', badTop: '#ffd9db',
 }
+const DARK: typeof LIGHT = {
+  paper: '#14162a', area: '#1b1e37', edge: '#2f3459', dot: '#343a63', ink: '#e9ebff', sub: '#7f86b5', shade: 'rgba(0,0,0,0.32)',
+  coral: '#ff8a70', coralTop: '#56342f', coralLow: '#c25f48',
+  peri: '#7d8bff', periTop: '#333a72', periLow: '#4f5dd6',
+  mint: '#35c9a9', mintTop: '#1f4a45', mintLow: '#1b7f6b',
+  amber: '#e39a00', red: '#f0505a', tube: '#2c3157', tubeEdge: '#5b66ad', violet: '#b08cff',
+  tubeFull: '#4a2532', tubeJam: '#43371c', tubeMid: '#434a7c', arrow: '#7480c4', slot: '#14162a', bead: '#474e80', downTop: '#3c3e55', badTop: '#4a2532',
+}
+let C = LIGHT
 const MAX_DOTS = 420
 const MAX_CELL = 60 // 큰 화면에서 작은 판이 지나치게 커지지 않게 하는 한 칸의 크기
 
@@ -300,6 +311,7 @@ export class Board {
 
   private draw(dt: number, now: number) {
     this.layout(dt)
+    C = getPref('dark') ? DARK : LIGHT
     const g = this.ctx
     g.fillStyle = C.paper
     g.fillRect(0, 0, this.cv.clientWidth, this.cv.clientHeight)
@@ -324,7 +336,7 @@ export class Board {
     const g = this.ctx, c = this.cam, S = this.S
     const x = this.ox + c.x * S, y = this.oy + c.y * S
     g.fillStyle = C.area
-    g.strokeStyle = '#d5daee'
+    g.strokeStyle = C.edge
     g.lineWidth = 1.5
     g.beginPath(); g.roundRect(x, y, c.w * S, c.h * S, S * 0.7); g.fill(); g.stroke()
     const t = this.grow ? (performance.now() - this.grow.at) / 2600 : 1
@@ -366,10 +378,10 @@ export class Board {
     g.globalAlpha = l.draining ? 0.45 : 1
     this.trace(p); g.strokeStyle = C.area; g.lineWidth = width + 9; g.stroke() // 교차해도 이어지지 않음을 보이는 틈
     this.trace(p); g.strokeStyle = edge; g.lineWidth = width + (sel ? 6 : 3.5); g.stroke()
-    this.trace(p); g.strokeStyle = l.state === 'full' ? '#ffe9ea' : l.state === 'jam' ? '#fff4dc' : C.tube; g.lineWidth = width; g.stroke()
-    this.trace(p); g.strokeStyle = '#dfe3f5'; g.lineWidth = 1; g.setLineDash([3, 5]); g.stroke(); g.setLineDash([])
+    this.trace(p); g.strokeStyle = l.state === 'full' ? C.tubeFull : l.state === 'jam' ? C.tubeJam : C.tube; g.lineWidth = width; g.stroke()
+    this.trace(p); g.strokeStyle = C.tubeMid; g.lineWidth = 1; g.setLineDash([3, 5]); g.stroke(); g.setLineDash([])
     // 나가는 방향 표시
-    g.strokeStyle = '#aab3e0'
+    g.strokeStyle = C.arrow
     g.lineWidth = 1.6
     for (const t of [0.28, 0.55, 0.82]) {
       const off = 0.035 + strands(l.level) * 0.065
@@ -421,7 +433,7 @@ export class Board {
 
   private plate(shape: (dy: number) => void, top: string, low: string, rim: string) {
     const g = this.ctx, S = this.S
-    g.fillStyle = 'rgba(52,58,110,0.10)'
+    g.fillStyle = C.shade
     shape(0.26 * S); g.fill()
     g.fillStyle = low
     shape(0.13 * S); g.fill()
@@ -481,7 +493,7 @@ export class Board {
 
   private api(n: GNode, x: number, y: number, r: number) {
     const down = n.state === 'down'
-    this.plate((dy) => this.hex(x, y + dy, r), down ? '#e7e7ee' : C.periTop, down ? '#9a9cb0' : C.periLow, down ? '#8a8ca3' : C.peri)
+    this.plate((dy) => this.hex(x, y + dy, r), down ? C.downTop : C.periTop, down ? '#9a9cb0' : C.periLow, down ? '#8a8ca3' : C.peri)
     if (down) this.hatch(() => this.hex(x, y, r))
     if (n.slots > 7) return this.gauge(x, y, r * 0.62, n, C.peri)
     const k = n.slots, rr = k <= 2 ? r * 0.3 : k <= 4 ? r * 0.25 : r * 0.2
@@ -498,7 +510,7 @@ export class Board {
     const busy = n.jobs.filter((j) => !j.d).length / n.slots, held = n.jobs.filter((j) => j.d).length / n.slots
     g.lineCap = 'butt'
     g.lineWidth = r * 0.34
-    g.strokeStyle = '#fff'
+    g.strokeStyle = C.slot
     g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke()
     g.strokeStyle = n.speed === 0 ? '#8a8ca3' : col
     g.beginPath(); g.arc(x, y, r, -TAU / 4, -TAU / 4 + busy * TAU); g.stroke()
@@ -511,7 +523,7 @@ export class Board {
 
   private slot(x: number, y: number, r: number, j: GNode['jobs'][number] | undefined, n: GNode, col: string) {
     const g = this.ctx
-    g.fillStyle = '#fff'
+    g.fillStyle = C.slot
     g.strokeStyle = col
     g.lineWidth = 1.4
     g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.globalAlpha *= 0.5; g.stroke(); g.globalAlpha = n.draining ? 0.5 : 1
@@ -525,7 +537,7 @@ export class Board {
   private db(n: GNode, x: number, y: number, r: number) {
     const g = this.ctx
     const disc = (dy: number) => { g.beginPath(); g.ellipse(x, y + dy, r, r * 0.62, 0, 0, 7) }
-    g.fillStyle = 'rgba(52,58,110,0.10)'
+    g.fillStyle = C.shade
     disc(r * 0.72); g.fill()
     g.lineWidth = Math.max(1.5, this.S * 0.05)
     for (const dy of [0.42, 0.14, -0.14]) {
@@ -551,7 +563,7 @@ export class Board {
       const a = -Math.PI / 2 - span / 2 + (show === 1 ? 0 : (i * span) / (show - 1))
       const X = x + Math.cos(a) * R, Y = y + Math.sin(a) * R * (n.kind === DB ? 0.9 : 1)
       g.beginPath(); g.arc(X, Y, i < filled ? br : br * 0.55, 0, 7)
-      g.fillStyle = i < filled ? col : '#c9cfe6'
+      g.fillStyle = i < filled ? col : C.bead
       g.fill()
     }
     if (n.out > 0) { g.fillStyle = C.mint; g.font = `600 ${S * 0.22}px "Gothic A1"`; g.textAlign = 'left'; g.fillText(`응답 대기 ${n.out}`, x + r * 0.9, y + r * 0.7) }
@@ -706,7 +718,7 @@ export class Board {
     g.globalAlpha = 0.6
     if (db) { g.beginPath(); g.ellipse(x, y, 0.9 * S, 0.62 * S, 0, 0, 7) }
     else this.hex(x, y, 0.82 * S)
-    g.fillStyle = why ? '#ffd9db' : db ? C.mintTop : C.periTop; g.fill()
+    g.fillStyle = why ? C.badTop : db ? C.mintTop : C.periTop; g.fill()
     g.strokeStyle = why ? C.red : db ? C.mint : C.peri; g.lineWidth = 2.5; g.setLineDash([6, 5]); g.stroke(); g.setLineDash([])
     g.globalAlpha = 1
     const h = this.game.head
