@@ -1,28 +1,33 @@
-export const SOURCE = 0, API = 1, DB = 2
+export const SOURCE = 0, API = 1, DB = 2, CACHE = 3
 export interface Job { id: number; s: number; e: number; d?: boolean }
 export interface GNode {
   id: number; kind: number; index: number; x: number; y: number; level: number; slots: number; procMs: number; limit: number
   queue: number; out: number; pending: number; jobs: Job[]; stuck: number; draining: boolean; speed: number; state: 'ok' | 'busy' | 'full' | 'slow' | 'down'
   done: number; fail: number[]; spawned: number; rate: number; nextRate: number; upgrade: number
-  next?: { slots: number; procMs: number; limit: number }; refund: number; routed: boolean
+  next?: { slots: number; procMs: number; limit: number; hit: number }; refund: number; routed: boolean; hit: number
+  store?: { data: number; cap: number; next: number; cost: number; level: number }
 }
 export interface GLink {
   id: number; from: number; to: number; level: number; cap: number; used: number; waiting: number; travel: number; room: number
   moving: [number, number]; pending: number; passed: number; fail: number[]; state: 'ok' | 'busy' | 'full' | 'jam' | 'blocked'; draining: boolean
-  upgrade: number; nextCap: number; refund: number
+  upgrade: number; nextCap: number; refund: number; ws: boolean; wsNext?: { cost: number; cap: number; travel: number }
 }
 export interface Fault { id: number; type: 'api_slow' | 'api_down' | 'link_block'; state: string; node?: number; link?: number; startAt: number; endAt: number; percent: number; failedIn: number }
-export interface Reward { phase: number; income: number; options: { id: string; amount: number }[] }
+export interface Gain { label: string; from: string; to: string }
+export interface Reward { phase: number; income: number; held: number; interest: number; mul: number; options: { id: string; amount: number; gains: Gain[] }[] }
+export type Opened = 'storage' | 'redis' | 'ws'
+export interface Bonus { queue: number; deadline: number; linkRate: number; apiOpt: number; dbIndex: number; cache: number; storage: number }
 export interface Area { x: number; y: number; w: number; h: number }
 export interface Head {
   tick: number; score: number; health: number; budget: number; paused: boolean; started: boolean; speed: number; over: string; phase: number; phaseAt: number; phaseEnd: number
-  apiCost: number; dbCost: number; revenueNeed: number; rank: number; rankName: string; nextRank: number; surge: number; servers: number
+  apiCost: number; dbCost: number; redisCost: number; revenueNeed: number; revenueMul: number; interestPercent: number; open: Record<Opened, boolean>; bonus: Bonus; rank: number; rankName: string; nextRank: number; surge: number; servers: number
   spawned: number; completed: number; failures: number[]; active: number; reward: Reward | null; faults: Fault[]
   upcoming: { x: number; y: number; at: number }[]; rps10: number; p95: number; area: Area; cache: number; deadline: number; pauseReason: string
 }
 export interface Config {
   practice: boolean; tps: number; healthMax: number; score: number; linkBase: number; linkPerCell: number
   minNodeGap: number; maxServers: number; learnSeconds: number; startSec: number; sources: { x: number; y: number }[]; refundPercent: number; failPenalty: number; faultPercent: number
+  redisHit: number; wsSpeed: number; wsRate: number; wsRevenue: number; storageWarn: number; storageSlow: number
 }
 export interface Result {
   over: string; seconds: number; score: number; completed: number; failures: number[]; health: number; spent: number; peakWait: number; apis: number; links: number
@@ -31,7 +36,7 @@ export interface Result {
 export interface GEvent { k: string; at: number; r?: number; n?: number; l?: number; a?: number; b?: number; s?: number; t?: string }
 export interface Ack { seq: number; ok: boolean; error?: string; tick: number; id?: number }
 export type Selection = { type: 'node' | 'link'; id: number } | null
-export type Tool = 'connect' | 'api' | 'db'
+export type Tool = 'connect' | 'api' | 'db' | 'redis'
 
 export interface Best { score: number; seconds: number; rank: string }
 export const loadBest = (): Best | null => { try { return JSON.parse(localStorage.getItem('serverway.best') ?? 'null') } catch { return null } }
@@ -49,4 +54,7 @@ export const FAULT_TEXT: Record<Fault['type'], { title: string; effect: (f: Faul
   api_down: { title: '배포 실패', effect: () => '재시작하는 동안 처리 중단', tip: '다른 서버를 키우고 우회 링크를 준비하세요' },
   link_block: { title: '회선 단선', effect: () => '새 요청과 응답이 지나갈 수 없음', tip: '같은 클라이언트에서 다른 서버로 링크를 하나 더 만드세요' },
 }
-export const nodeName = (n: GNode) => (n.kind === SOURCE ? `클라이언트 ${n.index}` : n.kind === API ? `서버 ${n.index}` : `DB ${n.index}`)
+export const nodeName = (n: GNode) => (n.kind === SOURCE ? `클라이언트 ${n.index}` : n.kind === API ? `서버 ${n.index}` : n.kind === CACHE ? `Redis ${n.index}` : `DB ${n.index}`)
+export const perSec = (n: { slots: number; procMs: number }) => ((n.slots * 1000) / n.procMs).toFixed(1)
+// 예산 1을 버는 데 필요한 완료 수
+export const revenueText = (h: Head) => `${+((h.revenueNeed * 100) / h.revenueMul).toFixed(1)}건당 1`

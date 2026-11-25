@@ -5,7 +5,7 @@ import "fmt"
 type Command struct {
 	Seq   int64  `json:"seq"`
 	Type  string `json:"type"`
-	Kind  string `json:"kind,omitempty"` // build: api(기본) 또는 db, scene: source, traffic, fault, reward
+	Kind  string `json:"kind,omitempty"` // build: api(기본), db, redis, scene: source, traffic, fault, reward
 	X     int    `json:"x,omitempty"`
 	Y     int    `json:"y,omitempty"`
 	From  int    `json:"from,omitempty"`
@@ -98,8 +98,11 @@ func (s *Sim) exec(c Command) (int, error) {
 		return 0, nil
 	case "build":
 		k := API
-		if c.Kind == "db" {
+		switch c.Kind {
+		case "db":
 			k = DB
+		case "redis":
+			k = Cache
 		}
 		return s.build(k, c.X, c.Y)
 	case "link":
@@ -108,6 +111,10 @@ func (s *Sim) exec(c Command) (int, error) {
 		return c.ID, s.upgradeNode(c.ID)
 	case "upgradeLink":
 		return c.ID, s.upgradeLink(c.ID)
+	case "storage":
+		return c.ID, s.growStorage(c.ID)
+	case "websocket":
+		return c.ID, s.webSocket(c.ID)
 	case "removeLink":
 		return c.ID, s.removeLink(c.ID)
 	case "removeNode":
@@ -145,8 +152,11 @@ func (s *Sim) CanBuild(x, y int) error {
 }
 
 func (s *Sim) build(k Kind, x, y int) (int, error) {
-	if s.count(API)+s.count(DB) >= s.Cfg.MaxServers {
-		return 0, fmt.Errorf("서버와 DB는 모두 %d대까지 놓을 수 있습니다", s.Cfg.MaxServers)
+	if k == Cache && !s.Unlocked(s.Cfg.Unlock.Redis) {
+		return 0, fmt.Errorf("아직 열리지 않았습니다")
+	}
+	if s.count(API)+s.count(DB)+s.count(Cache) >= s.Cfg.MaxServers {
+		return 0, fmt.Errorf("모두 %d대까지 놓을 수 있습니다", s.Cfg.MaxServers)
 	}
 	if err := s.CanBuild(x, y); err != nil {
 		return 0, err
@@ -157,6 +167,9 @@ func (s *Sim) build(k Kind, x, y int) (int, error) {
 	}
 	n := s.addNode(k, x, y)
 	n.Paid = cost
+	if k == DB {
+		s.spread(0)
+	}
 	return n.ID, nil
 }
 
@@ -168,10 +181,10 @@ func (s *Sim) CanLink(a, b *Node) error {
 		return fmt.Errorf("자기 자신에게는 연결할 수 없습니다")
 	case a.Draining || b.Draining:
 		return fmt.Errorf("철거 중이라 연결할 수 없습니다")
-	case a.Kind == Source && b.Kind == DB:
+	case a.Kind == Source && (b.Kind == DB || b.Kind == Cache):
 		return fmt.Errorf("요청은 서버 처리를 먼저 거쳐야 합니다")
-	case a.Kind == DB:
-		return fmt.Errorf("연결은 서버에서 DB 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
+	case a.Kind == DB || a.Kind == Cache:
+		return fmt.Errorf("연결은 서버에서 그립니다. 응답은 같은 링크로 돌아옵니다")
 	case b.Kind == Source:
 		return fmt.Errorf("연결은 클라이언트에서 서버 쪽으로 그립니다. 응답은 같은 링크로 돌아옵니다")
 	case a.Kind == b.Kind:
@@ -245,6 +258,36 @@ func (s *Sim) upgradeLink(id int) error {
 	return nil
 }
 
+// growStorage는 DB의 저장 공간을 한 단계 늘린다.
+func (s *Sim) growStorage(id int) error {
+	n := s.Node(id)
+	if n == nil || n.Kind != DB || n.Draining || !s.Unlocked(s.Cfg.Unlock.Storage) || n.Store+1 >= maxLevel {
+		return fmt.Errorf("저장 공간을 늘릴 수 없는 대상입니다")
+	}
+	cost := s.StorageCost(n)
+	if err := s.pay(cost); err != nil {
+		return err
+	}
+	n.Store++
+	n.Paid += cost
+	return nil
+}
+
+// webSocket은 링크를 WebSocket으로 바꾼다. 이미 지나가는 요청의 도착 시각은 그대로다.
+func (s *Sim) webSocket(id int) error {
+	l := s.Link(id)
+	if l == nil || !s.CanWS(l) {
+		return fmt.Errorf("WebSocket으로 바꿀 수 없는 링크입니다")
+	}
+	cost := s.WSCost()
+	if err := s.pay(cost); err != nil {
+		return err
+	}
+	l.Travel, l.WS = s.WSTravel(l), true
+	l.Paid += cost
+	return nil
+}
+
 // removeLink는 새 요청만 막는다. 이미 나간 요청은 응답까지 돌아온 뒤에 링크가 사라진다.
 func (s *Sim) removeLink(id int) error {
 	l := s.Link(id)
@@ -261,7 +304,7 @@ func (s *Sim) removeNode(id int) error {
 	if n == nil || n.Kind == Source || n.Draining {
 		return fmt.Errorf("철거할 수 없는 대상입니다")
 	}
-	if s.count(n.Kind) <= 1 {
+	if n.Kind != Cache && s.count(n.Kind) <= 1 {
 		return fmt.Errorf("마지막 한 대는 철거할 수 없습니다")
 	}
 	n.Draining = true
@@ -284,7 +327,20 @@ func (s *Sim) reward(i int) error {
 	if s.Pending == nil || i < 0 || i >= len(s.Pending.Options) {
 		return fmt.Errorf("선택할 보상이 없습니다")
 	}
-	o := s.Pending.Options[i]
+	s.grant(s.Pending.Options[i])
+	s.Pending = nil
+	return nil
+}
+
+// WithReward는 보상을 받았다고 치고 f를 부른 뒤 되돌린다. 미리 보기에 쓴다.
+func (s *Sim) WithReward(o RewardDef, f func()) {
+	bonus, budget, health := s.Bonus, s.Budget, s.Health
+	s.grant(o)
+	f()
+	s.Bonus, s.Budget, s.Health = bonus, budget, health
+}
+
+func (s *Sim) grant(o RewardDef) {
 	switch o.ID {
 	case "budget":
 		s.Budget += o.Amount
@@ -302,9 +358,9 @@ func (s *Sim) reward(i int) error {
 		s.Bonus.Cache = min(60, s.Bonus.Cache+o.Amount)
 	case "health":
 		s.Health = min(s.Cfg.Health.Max, s.Health+o.Amount)
+	case "storage":
+		s.Bonus.Storage += o.Amount
 	}
-	s.Pending = nil
-	return nil
 }
 
 // Replay는 시드와 명령 기록으로 같은 게임을 다시 계산한다. 일시 정지와 속도는 결과에 영향이 없어 건너뛴다.

@@ -3,6 +3,7 @@ package game
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"serverway/internal/sim"
 )
@@ -15,59 +16,100 @@ type jobView struct {
 }
 
 type nodeView struct {
-	ID       int       `json:"id"`
-	Kind     sim.Kind  `json:"kind"`
-	Index    int       `json:"index"`
-	X        int       `json:"x"`
-	Y        int       `json:"y"`
-	Level    int       `json:"level"`
-	Slots    int       `json:"slots"`
-	ProcMs   int       `json:"procMs"`
-	Limit    int       `json:"limit"`
-	Queue    int       `json:"queue"`
-	Jobs     []jobView `json:"jobs"`
-	Out      int       `json:"out"` // 돌아갈 차선을 기다리는 응답
-	Pending  int       `json:"pending"`
-	Stuck    int       `json:"stuck"`
-	Draining bool      `json:"draining"`
-	Speed    int       `json:"speed"`
-	State    string    `json:"state"` // ok, busy, full, slow, down
-	Done     int       `json:"done"`
-	Fail     [4]int    `json:"fail"`
-	Spawned  int       `json:"spawned"`
-	Rate     int       `json:"rate"`     // 클라이언트: 초당 요청 1000배
-	NextRate int       `json:"nextRate"` // 30초 뒤 예상
-	Upgrade  int       `json:"upgrade"`  // 다음 레벨 비용
-	Next     *upView   `json:"next,omitempty"`
-	Refund   int       `json:"refund"`
-	Routed   bool      `json:"routed"` // 클라이언트: 완료까지 이어지는 길이 있는지
+	ID       int        `json:"id"`
+	Kind     sim.Kind   `json:"kind"`
+	Index    int        `json:"index"`
+	X        int        `json:"x"`
+	Y        int        `json:"y"`
+	Level    int        `json:"level"`
+	Slots    int        `json:"slots"`
+	ProcMs   int        `json:"procMs"`
+	Limit    int        `json:"limit"`
+	Queue    int        `json:"queue"`
+	Jobs     []jobView  `json:"jobs"`
+	Out      int        `json:"out"` // 돌아갈 차선을 기다리는 응답
+	Pending  int        `json:"pending"`
+	Stuck    int        `json:"stuck"`
+	Draining bool       `json:"draining"`
+	Speed    int        `json:"speed"`
+	State    string     `json:"state"` // ok, busy, full, slow, down
+	Done     int        `json:"done"`
+	Fail     [4]int     `json:"fail"`
+	Spawned  int        `json:"spawned"`
+	Rate     int        `json:"rate"`     // 클라이언트: 초당 요청 1000배
+	NextRate int        `json:"nextRate"` // 30초 뒤 예상
+	Upgrade  int        `json:"upgrade"`  // 다음 레벨 비용
+	Next     *upView    `json:"next,omitempty"`
+	Refund   int        `json:"refund"`
+	Routed   bool       `json:"routed"`          // 클라이언트: 완료까지 이어지는 길이 있는지
+	Hit      int        `json:"hit"`             // Redis: 적중률
+	Store    *storeView `json:"store,omitempty"` // DB: 저장 공간. 열리기 전에는 없다
+}
+
+type storeView struct {
+	Data  int `json:"data"`
+	Cap   int `json:"cap"`
+	Next  int `json:"next"`
+	Cost  int `json:"cost"`
+	Level int `json:"level"`
 }
 
 type upView struct {
 	Slots  int `json:"slots"`
 	ProcMs int `json:"procMs"`
 	Limit  int `json:"limit"`
+	Hit    int `json:"hit"`
 }
 
 type linkView struct {
-	ID       int    `json:"id"`
-	From     int    `json:"from"`
-	To       int    `json:"to"`
-	Level    int    `json:"level"`
-	Cap      int    `json:"cap"`
-	Used     int    `json:"used"`
-	Waiting  int    `json:"waiting"`
-	Travel   int    `json:"travel"`
-	Room     int    `json:"room"`
-	Moving   [2]int `json:"moving"`
-	Pending  int    `json:"pending"`
-	Passed   int    `json:"passed"`
-	Fail     [4]int `json:"fail"`
-	State    string `json:"state"` // ok, busy, full(전송 한계), jam(앞이 막힘), blocked
-	Draining bool   `json:"draining"`
-	Upgrade  int    `json:"upgrade"`
-	NextCap  int    `json:"nextCap"`
-	Refund   int    `json:"refund"`
+	ID       int     `json:"id"`
+	From     int     `json:"from"`
+	To       int     `json:"to"`
+	Level    int     `json:"level"`
+	Cap      int     `json:"cap"`
+	Used     int     `json:"used"`
+	Waiting  int     `json:"waiting"`
+	Travel   int     `json:"travel"`
+	Room     int     `json:"room"`
+	Moving   [2]int  `json:"moving"`
+	Pending  int     `json:"pending"`
+	Passed   int     `json:"passed"`
+	Fail     [4]int  `json:"fail"`
+	State    string  `json:"state"` // ok, busy, full(전송 한계), jam(앞이 막힘), blocked
+	Draining bool    `json:"draining"`
+	Upgrade  int     `json:"upgrade"`
+	NextCap  int     `json:"nextCap"`
+	Refund   int     `json:"refund"`
+	WS       bool    `json:"ws"`
+	WSNext   *wsView `json:"wsNext,omitempty"` // 전환할 수 있을 때만 있다
+}
+
+type wsView struct {
+	Cost   int `json:"cost"`
+	Cap    int `json:"cap"`
+	Travel int `json:"travel"`
+}
+
+// rewardView는 고르기 전에 실제로 얼마가 되는지 보여 준다.
+type rewardView struct {
+	Phase    int          `json:"phase"`
+	Income   int          `json:"income"`
+	Held     int          `json:"held"`
+	Interest int          `json:"interest"`
+	Mul      int          `json:"mul"`
+	Options  []optionView `json:"options"`
+}
+
+type optionView struct {
+	ID     string `json:"id"`
+	Amount int    `json:"amount"`
+	Gains  []gain `json:"gains"`
+}
+
+type gain struct {
+	Label string `json:"label"`
+	From  string `json:"from"`
+	To    string `json:"to"`
 }
 
 type faultView struct {
@@ -103,7 +145,12 @@ type head struct {
 	PhaseEnd  int         `json:"phaseEnd"`
 	ApiCost   int         `json:"apiCost"`
 	DbCost    int         `json:"dbCost"`
+	RedisCost int         `json:"redisCost"`
 	Revenue   int         `json:"revenueNeed"`
+	Mul       int         `json:"revenueMul"`
+	Interest  int         `json:"interestPercent"`
+	Open      openView    `json:"open"`
+	Bonus     bonusView   `json:"bonus"`
 	Rank      int         `json:"rank"`
 	RankName  string      `json:"rankName"`
 	NextRank  int         `json:"nextRank"`
@@ -113,7 +160,7 @@ type head struct {
 	Completed int         `json:"completed"`
 	Failures  [4]int      `json:"failures"`
 	Active    int         `json:"active"`
-	Reward    *sim.Reward `json:"reward"`
+	Reward    *rewardView `json:"reward"`
 	Faults    []faultView `json:"faults"`
 	Upcoming  []upcoming  `json:"upcoming"`
 	Rps10     int         `json:"rps10"`
@@ -122,6 +169,24 @@ type head struct {
 	Cache     int         `json:"cache"`
 	Deadline  int         `json:"deadline"`
 	Why       string      `json:"pauseReason"`
+}
+
+// openView는 성장 단계에서 열린 기능이다.
+type openView struct {
+	Storage bool `json:"storage"`
+	Redis   bool `json:"redis"`
+	WS      bool `json:"ws"`
+}
+
+// bonusView는 보상으로 쌓은 개선이다.
+type bonusView struct {
+	Queue    int `json:"queue"`
+	Deadline int `json:"deadline"`
+	LinkRate int `json:"linkRate"`
+	APIOpt   int `json:"apiOpt"`
+	DBIndex  int `json:"dbIndex"`
+	Cache    int `json:"cache"`
+	Storage  int `json:"storage"`
 }
 
 type result struct {
@@ -147,13 +212,16 @@ type result struct {
 
 func makeHead(s *sim.Sim, why string) head {
 	h := head{Tick: s.Tick, Score: s.Score, Health: s.Health, Budget: s.Budget, Paused: s.Paused, Started: s.Started, Speed: s.Speed, Over: s.Over,
-		Phase: s.Phase, Spawned: s.Spawned, Completed: s.Completed, Failures: s.Failures, Active: s.Active, Reward: s.Pending,
+		Phase: s.Phase, Spawned: s.Spawned, Completed: s.Completed, Failures: s.Failures, Active: s.Active, Reward: makeReward(s),
 		Faults: faults(s), Upcoming: []upcoming{}, Rps10: s.RPS10(), P95: s.P95(), Area: s.Area(), Cache: s.Bonus.Cache, Deadline: s.Cfg.Request.DeadlineSec + s.Bonus.Deadline}
 	if s.Paused {
 		h.Why = why
 	}
 	h.PhaseAt, h.PhaseEnd, h.Revenue, h.Surge = s.PhaseAt, s.PhaseEnd, s.RevenueNeed(), s.Surge(s.Tick)
-	h.ApiCost, h.DbCost = s.BuildCost(sim.API), s.BuildCost(sim.DB)
+	h.ApiCost, h.DbCost, h.RedisCost = s.BuildCost(sim.API), s.BuildCost(sim.DB), s.BuildCost(sim.Cache)
+	h.Mul, h.Interest, h.Bonus = s.RevenueMul(), s.Cfg.InterestPercent, bonusView(s.Bonus)
+	u := s.Cfg.Unlock
+	h.Open = openView{s.Unlocked(u.Storage), s.Unlocked(u.Redis), s.Unlocked(u.WebSocket)}
 	h.Rank, h.RankName = s.Rank()
 	if h.Rank+1 < len(s.Cfg.Ranks) {
 		h.NextRank = s.Cfg.Ranks[h.Rank+1].At
@@ -167,6 +235,81 @@ func makeHead(s *sim.Sim, why string) head {
 		h.Upcoming = append(h.Upcoming, upcoming{c.X, c.Y, c.At})
 	}
 	return h
+}
+
+func makeReward(s *sim.Sim) *rewardView {
+	r := s.Pending
+	if r == nil {
+		return nil
+	}
+	v := &rewardView{Phase: r.Phase, Income: r.Income, Held: r.Held, Interest: r.Interest, Mul: s.RevenueMul()}
+	for _, o := range r.Options {
+		v.Options = append(v.Options, optionView{o.ID, o.Amount, gains(s, o)})
+	}
+	return v
+}
+
+// gains는 보상을 받기 전과 받은 뒤의 실제 값이다.
+func gains(s *sim.Sim, o sim.RewardDef) []gain {
+	measure := func() []gain {
+		top := func(k sim.Kind) (best *sim.Node) {
+			for _, n := range s.Nodes {
+				if n.Kind == k && !n.Draining && (best == nil || n.Level > best.Level) {
+					best = n
+				}
+			}
+			return
+		}
+		// 초당 처리량 합계의 10배
+		rate := func(k sim.Kind) (t int) {
+			for _, n := range s.Nodes {
+				if n.Kind == k && !n.Draining {
+					lv := s.ServerLevel(n)
+					t += lv.Slots * 10000 / lv.ProcMs
+				}
+			}
+			return
+		}
+		per := func(t int) string { return fmt.Sprintf("초당 %d.%d", t/10, t%10) }
+		switch o.ID {
+		case "budget":
+			return []gain{{Label: "예산", To: fmt.Sprint(s.Budget)}}
+		case "queue":
+			return []gain{{Label: "서버 대기열", To: fmt.Sprintf("%d칸", s.ServerLevel(top(sim.API)).Queue)}, {Label: "DB 대기열", To: fmt.Sprintf("%d칸", s.ServerLevel(top(sim.DB)).Queue)}}
+		case "deadline":
+			return []gain{{Label: "처리 기한", To: fmt.Sprintf("%d초", s.Cfg.Request.DeadlineSec+s.Bonus.Deadline)}}
+		case "linkRate":
+			t := 0
+			for _, l := range s.Links {
+				t += s.LinkRate(l)
+			}
+			return []gain{{Label: "링크 전송 합계", To: fmt.Sprintf("초당 %d", t)}}
+		case "health":
+			return []gain{{Label: "서비스 상태", To: fmt.Sprintf("%d%%", (s.Health*100+s.Cfg.Health.Max-1)/s.Cfg.Health.Max)}}
+		case "apiOpt":
+			return []gain{{Label: "서버 처리량 합계", To: per(rate(sim.API))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.API)).ProcMs)}}
+		case "dbIndex":
+			return []gain{{Label: "DB 처리량 합계", To: per(rate(sim.DB))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.DB)).ProcMs)}}
+		case "cache":
+			return []gain{{Label: "DB로 가는 요청", To: fmt.Sprintf("%d%%", 100-s.Bonus.Cache)}}
+		case "storage":
+			t := 0
+			for _, n := range s.Nodes {
+				if n.Kind == sim.DB && !n.Draining {
+					t += s.StorageCap(n)
+				}
+			}
+			return []gain{{Label: "저장 공간 합계", To: fmt.Sprint(t)}}
+		}
+		return nil
+	}
+	before := measure()
+	s.WithReward(o, func() {
+		for i, a := range measure() {
+			before[i].From, before[i].To = before[i].To, a.To
+		}
+	})
+	return before
 }
 
 func faults(s *sim.Sim) []faultView {
@@ -187,8 +330,8 @@ func makeNode(s *sim.Sim, n *sim.Node) nodeView {
 	for _, j := range n.Jobs {
 		// 장애로 멈춘 동안에는 끝나는 시각을 알 수 없으므로 멈춘 지점을 그대로 보낸다.
 		end := j.Start + max(1, lv.ProcMs/sim.TickMs)
-		if n.Speed > 0 && n.Speed < 100 {
-			end = s.Tick + (j.Left+n.Speed-1)/n.Speed
+		if p := s.Pace(n); p > 0 && p < 100 {
+			end = s.Tick + (j.Left+p-1)/p
 		} else if n.Speed == 0 {
 			end = 0
 		}
@@ -211,7 +354,10 @@ func makeNode(s *sim.Sim, n *sim.Node) nodeView {
 	}
 	v.Refund = n.Paid * s.Cfg.RefundPercent / 100
 	x := s.NextLevel(n)
-	v.Upgrade, v.Next = x.Cost, &upView{x.Slots, x.ProcMs, x.Queue}
+	v.Upgrade, v.Next, v.Hit = x.Cost, &upView{x.Slots, x.ProcMs, x.Queue, x.Hit}, lv.Hit
+	if n.Kind == sim.DB && s.Unlocked(s.Cfg.Unlock.Storage) {
+		v.Store = &storeView{n.Data, s.StorageCap(n), s.NextStorage(n), s.StorageCost(n), n.Store}
+	}
 	return v
 }
 
@@ -230,7 +376,10 @@ func makeLink(s *sim.Sim, l *sim.Link) linkView {
 		v.State = "busy"
 	}
 	x := s.Cfg.LinkLevel(l.Level + 1)
-	v.Upgrade, v.NextCap = x.Cost, x.PerSec+s.Bonus.LinkRate
+	v.Upgrade, v.NextCap, v.WS = x.Cost, s.NextLinkRate(l), l.WS
+	if s.CanWS(l) {
+		v.WSNext = &wsView{s.WSCost(), s.WSLinkRate(l), s.WSTravel(l)}
+	}
 	return v
 }
 
@@ -256,7 +405,7 @@ func makeResult(s *sim.Sim) *result {
 		case sim.DB:
 			r.Dbs++
 			db += over
-		default:
+		case sim.Source:
 			r.Sources++
 			src += over
 		}

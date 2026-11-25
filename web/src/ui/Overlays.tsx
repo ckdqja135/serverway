@@ -1,8 +1,9 @@
-import { BookOpen, CircleX, Coins, Flag, Database, Gauge, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
-import { FAIL, FAULT_TEXT, clockText, loadBest, type Best, type Result } from '../types'
+import { FAIL, FAULT_TEXT, clockText, loadBest, revenueText, type Best, type Result } from '../types'
 import { LOCAL } from '../wire'
+import { Boosts } from './Growth'
 import { WhenToGrow } from './Lesson'
 import { Toggles } from './Toggles'
 
@@ -10,10 +11,11 @@ const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) 
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
   queue: { icon: <Layers />, name: '대기열 확장', text: (n) => `모든 서버와 DB의 대기열이 ${n}칸 늘어납니다` },
   deadline: { icon: <Timer />, name: '타임아웃 완화', text: (n) => `새 요청의 처리 기한이 ${n}초 늘어납니다` },
-  linkRate: { icon: <Waypoints />, name: 'Keep-Alive 적용', text: (n) => `모든 링크가 초당 ${n}개 더 보냅니다` },
+  linkRate: { icon: <Waypoints />, name: 'Keep-Alive 적용', text: (n) => `모든 링크가 ${n}% 더 보냅니다` },
   health: { icon: <HeartPulse />, name: '핫픽스 배포', text: (n) => `서비스 상태를 ${n / 1000}% 회복합니다` },
   apiOpt: { icon: <Zap />, name: '코드 최적화', text: (n) => `모든 서버의 처리 시간이 ${n}% 줄어듭니다` },
   dbIndex: { icon: <Database />, name: 'DB 인덱스 추가', text: (n) => `DB의 처리 시간이 ${n}% 줄어듭니다` },
+  storage: { icon: <HardDrive />, name: '스토리지 확장', text: (n) => `모든 DB의 저장 공간이 ${n}% 늘어납니다` },
   cache: { icon: <ServerCog />, name: '응답 캐시', text: (n) => `요청의 ${n}%는 서버가 DB 없이 바로 응답합니다` },
 }
 
@@ -22,18 +24,29 @@ export function RewardModal({ g }: { g: GameClient }) {
   const ref = useRef<HTMLButtonElement>(null)
   useEffect(() => { ref.current?.focus() }, [r?.phase])
   if (!r) return null
+  const pick = async (i: number) => {
+    const o = r.options[i], a = await g.send('reward', { index: i })
+    if (a.ok) g.say(`${REWARD[o.id]?.name}: ${o.gains.map((v) => `${v.label} ${v.from} → ${v.to}`).join(', ')}`)
+  }
   return (
     <div className="veil" role="dialog" aria-modal aria-label="구간 보상">
       <div className="modal">
         <h2>{r.phase}번째 구간을 버텼습니다</h2>
-        <p className="muted">예산 {r.income}이 들어왔습니다.{g.grew && ' 판도 넓어집니다.'} 개선 작업을 하나 고르세요. 고르는 동안 시간은 멈춥니다.</p>
+        <ul className="earned">
+          <li><span>구간 수입</span><b>+{r.income}</b></li>
+          <li><span>보유 예산 보너스 ({r.held}의 {g.head.interestPercent}%{r.interest === r.income && ', 최대'})</span><b>+{r.interest}</b></li>
+          <li><span>처리 수익</span><b>{(r.mul / 100).toFixed(1)}배</b></li>
+        </ul>
+        <p className="muted">{g.grew && '판도 넓어집니다. '}개선 작업을 하나 고르세요. 고르는 동안 시간은 멈춥니다.</p>
         <div className="cards">
           {r.options.map((o, i) => (
-            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" onClick={() => g.send('reward', { index: i })}>
+            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" onClick={() => pick(i)}>
               <span className="ic">{REWARD[o.id]?.icon}</span><b>{REWARD[o.id]?.name ?? o.id}</b><span>{REWARD[o.id]?.text(o.amount)}</span>
+              {o.gains.map((v) => <span key={v.label} className="delta"><small>{v.label}</small><span>{v.from}<ArrowRight size={14} aria-hidden /><b>{v.to}</b></span></span>)}
             </button>
           ))}
         </div>
+        <Boosts g={g} />
       </div>
     </div>
   )
@@ -144,7 +157,10 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
           <li>요청은 클라이언트, 서버, DB 순서로 처리된 뒤 <b>지나온 링크로 되돌아와야</b> 완료됩니다. 완료 하나에 {c.score}점입니다.</li>
           <li><b>마라톤:</b> 끝나는 시간이 없습니다. 클라이언트와 트래픽, 보드가 계속 늘어나며 서비스 상태가 0이 되면 끝납니다. 8분부터는 전체 트래픽이 점점 더 빠르게 늘어납니다.</li>
           <li><b>판:</b> 구간을 넘길 때마다 판이 넓어져 서버와 DB를 더 지을 수 있습니다.</li>
-          <li><b>예산:</b> 구간마다 들어오고, 요청을 {g.head.revenueNeed}건 완료할 때마다 1씩 벌립니다. 서버와 DB가 늘면 운영비 때문에 더 많이 완료해야 합니다.</li>
+          <li><b>예산:</b> 구간마다 들어오고 구간이 오를수록 많아집니다. 구간을 넘길 때 가진 예산의 {g.head.interestPercent}%를 보너스로 받습니다(그 구간 수입까지). 요청을 완료해도 벌리며 지금은 {revenueText(g.head)}입니다. 서버와 DB가 늘면 운영비 때문에 더 완료해야 하지만, 구간이 오를수록 수익이 커집니다.</li>
+          <li><b>저장 공간:</b> 성장 서비스부터 DB가 처리할 때마다 데이터가 쌓입니다. 가득 차면 속도가 {c.storageSlow}%로 떨어집니다. 저장 공간을 늘리거나 샤드를 추가해 나눕니다.</li>
+          <li><b>Redis:</b> 국민 서비스부터 지을 수 있습니다. 서버에서 이으면 요청의 일부를 DB 대신 응답합니다. DB로 가는 링크도 있어야 합니다.</li>
+          <li><b>WebSocket:</b> 국민 서비스부터 클라이언트와 서버 사이 링크를 전환할 수 있습니다. {c.wsSpeed / 100}배 빠르고 {c.wsRate / 100}배 많이 보내며 처리 수익이 {c.wsRevenue / 100}배입니다.</li>
           <li><b>DB 샤드:</b> DB를 더 지으면 요청을 나눠 처리합니다. 어느 샤드로 가도 된다고 단순하게 만들었으며, 서버에서 샤드로 링크를 이어야 쓰입니다.</li>
           <li><b>경로 선택:</b> 지금 보낼 수 있는 링크 중 이동 시간과 도착지 예상 대기를 더한 값이 가장 짧은 곳으로 갑니다. 같으면 먼저 만든 링크입니다.</li>
           <li><b>처리 용량:</b> 서버와 DB 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
@@ -158,7 +174,7 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
         <h2>조작</h2>
         <table><tbody>
           <tr><th>드래그</th><td>클라이언트에서 서버로, 서버에서 DB로 연결</td></tr><tr><th>클릭</th><td>노드나 링크 선택, 빈 곳은 선택 해제</td></tr>
-          <tr><th>두 손가락</th><td>확대와 이동 (휴대폰, 태블릿)</td></tr><tr><th>Space</th><td>일시 정지, 계속</td></tr><tr><th>S</th><td>속도 1x, 2x, 3x</td></tr><tr><th>1 / 2 / 3</th><td>연결 / 서버 추가 / DB 샤드 추가</td></tr>
+          <tr><th>두 손가락</th><td>확대와 이동 (휴대폰, 태블릿)</td></tr><tr><th>Space</th><td>일시 정지, 계속</td></tr><tr><th>S</th><td>속도 1x, 2x, 3x</td></tr><tr><th>1 / 2 / 3 / 4</th><td>연결 / 서버 추가 / DB 샤드 추가 / Redis 추가</td></tr>
           <tr><th>U</th><td>선택한 대상 업그레이드</td></tr><tr><th>Delete</th><td>선택한 대상 철거 (확인 후)</td></tr><tr><th>Esc</th><td>도구와 선택 취소</td></tr>
         </tbody></table>
       </div>

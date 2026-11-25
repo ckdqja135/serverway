@@ -18,6 +18,7 @@ type ServerLevel struct {
 	ProcMs int `json:"procMs"`
 	Queue  int `json:"queue"`
 	Cost   int `json:"cost"`
+	Hit    int `json:"hit"` // Redis가 DB 대신 응답하는 비율(퍼센트)
 }
 
 type LinkLevel struct {
@@ -41,6 +42,7 @@ func (d ServerDef) Level(i int) ServerLevel {
 	lv.Slots += d.Step.Slots * k
 	lv.Queue += d.Step.Queue * k
 	lv.Cost += d.Step.Cost * k
+	lv.Hit = min(80, lv.Hit+d.Step.Hit*k)
 	return lv
 }
 
@@ -102,6 +104,7 @@ type FaultDef struct {
 type RewardDef struct {
 	ID     string `json:"id"`
 	Amount int    `json:"amount"`
+	Step   int    `json:"step,omitempty"` // 구간 열 개마다 늘어나는 양
 }
 
 // Area는 그 구간을 넘긴 뒤부터 쓸 수 있는 보드 영역이다.
@@ -123,6 +126,8 @@ type Config struct {
 	Areas            []Area `json:"areas"`
 	InitialBudget    int    `json:"initialBudget"`
 	PhaseIncome      []int  `json:"phaseIncome"`
+	InterestPercent  int    `json:"interestPercent"` // 구간을 넘길 때 가진 예산에 붙는 보너스. 그 구간 수입까지만 준다
+	RevenueStep      int    `json:"revenueStep"`     // 구간마다 늘어나는 처리 수익(퍼센트)
 	RefundPercent    int    `json:"refundPercent"`
 	MinNodeGap       int    `json:"minNodeGap"`
 	RevenueEvery     int    `json:"revenueEvery"` // 이 값에 서버 대수를 더한 만큼 완료할 때마다 예산 1
@@ -147,8 +152,30 @@ type Config struct {
 	Source struct {
 		Queue int `json:"queue"`
 	} `json:"source"`
-	API  ServerDef `json:"api"`
-	DB   ServerDef `json:"db"`
+	API    ServerDef `json:"api"`
+	DB     ServerDef `json:"db"`
+	Redis  ServerDef `json:"redis"`
+	Unlock struct {  // 열리는 성장 단계
+		Storage   int `json:"storage"`
+		Redis     int `json:"redis"`
+		WebSocket int `json:"websocket"`
+	} `json:"unlock"`
+	// Storage는 DB의 저장 공간이다. 처리할 때마다 차고, 가득 차면 느려진다.
+	Storage struct {
+		Base        int `json:"base"`
+		GrowPercent int `json:"growPercent"`
+		Cost        int `json:"cost"`
+		CostStep    int `json:"costStep"`
+		WarnPercent int `json:"warnPercent"`
+		SlowPercent int `json:"slowPercent"`
+	} `json:"storage"`
+	WebSocket struct {
+		Cost           int `json:"cost"`
+		CostStep       int `json:"costStep"`
+		SpeedPercent   int `json:"speedPercent"`
+		RatePercent    int `json:"ratePercent"`
+		RevenuePercent int `json:"revenuePercent"` // 이 링크로 완료한 요청의 처리 수익
+	} `json:"websocket"`
 	Link struct {
 		BaseCost    int         `json:"baseCost"`
 		PerCell     int         `json:"perCell"`
@@ -179,7 +206,7 @@ func Parse(data []byte) (*Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, err
 	}
-	if c.PhaseSeconds < 1 || len(c.PhaseIncome) == 0 || len(c.Ranks) == 0 || len(c.API.Levels) == 0 || len(c.DB.Levels) == 0 || len(c.Link.Levels) == 0 ||
+	if c.PhaseSeconds < 1 || len(c.PhaseIncome) == 0 || len(c.Ranks) == 0 || len(c.API.Levels) == 0 || len(c.DB.Levels) == 0 || len(c.Redis.Levels) == 0 || len(c.Link.Levels) == 0 ||
 		len(c.Sources) == 0 || c.Link.CellsPerSec < 1 || c.Link.RoomPerCell < 1 || len(c.Areas) == 0 || c.Health.Max < 1 || len(c.Rewards) < 2 {
 		return nil, fmt.Errorf("밸런스 설정에 필요한 값이 빠져 있습니다")
 	}

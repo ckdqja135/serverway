@@ -458,7 +458,7 @@ func TestMarathonBalance(t *testing.T) {
 			s := Play(Default(), seed, &b, 3600)
 			worst = max(worst, s.Tick/TPS)
 		}
-		b := Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true}
+		b := Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true}
 		s := Play(Default(), seed, &b, 3600)
 		if sec := s.Tick / TPS; s.Over != "down" || sec < worst*2 || sec < 480 {
 			t.Errorf("시드 %d: 균형 %d초(%s), 한쪽만 증설 최고 %d초", seed, sec, s.Over, worst)
@@ -550,5 +550,122 @@ func TestEventBufferBounded(t *testing.T) {
 	g.Advance(300 * TPS)
 	if len(g.Events) > maxEvents || g.Active > g.Cfg.Request.MaxActive {
 		t.Fatalf("이벤트 %d 진행 %d", len(g.Events), g.Active)
+	}
+}
+
+// 성장 단계 전에는 쓸 수 없고, 오르면 쓸 수 있다.
+func TestUnlocks(t *testing.T) {
+	g := setup(t, nil)
+	src, _ := g.wire()
+	cmds := []Command{{Type: "build", Kind: "redis", X: 13, Y: 4}, {Type: "storage", ID: g.db.ID}, {Type: "websocket", ID: src}}
+	for _, c := range cmds {
+		if g.cmd(c).OK {
+			t.Fatalf("아직 열리지 않아야 함 %+v", c)
+		}
+	}
+	g.Completed = g.Cfg.Ranks[3].At
+	for _, c := range cmds {
+		g.must(c)
+	}
+	if g.cmd(cmds[2]).OK {
+		t.Fatal("두 번 전환할 수 없어야 함")
+	}
+	for _, l := range g.Links {
+		if l.ID != src && g.cmd(Command{Type: "websocket", ID: l.ID}).OK {
+			t.Fatal("클라이언트와 서버 사이에서만 전환해야 함")
+		}
+	}
+}
+
+func TestRedisTakesLoadOffDB(t *testing.T) {
+	g := setup(t, func(c *Config) { c.Unlock.Redis = 0 })
+	g.wire()
+	id := g.must(Command{Type: "build", Kind: "redis", X: 13, Y: 4})
+	if g.cmd(Command{Type: "link", From: g.src.ID, To: id}).OK || g.cmd(Command{Type: "link", From: id, To: g.db.ID}).OK {
+		t.Fatal("서버에서만 이을 수 있어야 함")
+	}
+	g.must(Command{Type: "link", From: g.api.ID, To: id})
+	g.run(90)
+	r := g.Node(id)
+	if share := r.Done * 100 / (r.Done + g.db.Done); fails(g.Sim) != 0 || share < 25 || share > 55 {
+		t.Fatalf("Redis %d DB %d 실패 %v", r.Done, g.db.Done, g.Failures)
+	}
+	// 철거하면 남은 요청을 다 돌려보내고, 그 뒤로는 모두 DB로 간다.
+	g.must(Command{Type: "removeNode", ID: id})
+	g.run(30)
+	if g.Node(id) != nil || fails(g.Sim) != 0 {
+		t.Fatalf("철거 %v 실패 %v", g.Node(id), g.Failures)
+	}
+}
+
+func TestStorageFillsAndSlows(t *testing.T) {
+	g := setup(t, func(c *Config) { c.Storage.Base, c.Unlock.Storage = 40, 0 })
+	g.wire()
+	g.run(60)
+	limit := g.StorageCap(g.db)
+	if g.db.Data != limit || g.Pace(g.db) != g.Cfg.Storage.SlowPercent {
+		t.Fatalf("데이터 %d 상한 %d 속도 %d", g.db.Data, limit, g.Pace(g.db))
+	}
+	g.must(Command{Type: "storage", ID: g.db.ID})
+	if g.StorageCap(g.db) <= limit || g.Pace(g.db) != 100 {
+		t.Fatal("증설하면 바로 풀려야 함")
+	}
+	// 샤드를 지으면 공간에 비례해 나뉘고, 철거하면 남은 DB로 옮긴다.
+	total := g.db.Data
+	id := g.must(Command{Type: "build", Kind: "db", X: 16, Y: 10})
+	n := g.Node(id)
+	if n.Data == 0 || n.Data >= g.db.Data || n.Data+g.db.Data < total-2 || n.Data+g.db.Data > total {
+		t.Fatalf("나눈 뒤 %d + %d, 합계 %d", g.db.Data, n.Data, total)
+	}
+	before := g.db.Data
+	g.must(Command{Type: "removeNode", ID: id})
+	g.run(1)
+	if g.Node(id) != nil || g.db.Data <= before {
+		t.Fatalf("옮긴 뒤 %d, 전 %d", g.db.Data, before)
+	}
+}
+
+func TestIncomeGrowsWithPhase(t *testing.T) {
+	g := setup(t, func(c *Config) { c.PhaseSeconds, c.Endless.IncomeStep = 5, 15 })
+	seen := 0
+	for phase := 1; phase <= 14; phase++ {
+		held := 60 * phase
+		g.Budget = held
+		for g.Pending == nil {
+			g.Advance(1)
+			g.Health = g.Cfg.Health.Max
+		}
+		p := g.Pending
+		if p.Income <= seen || p.Interest != min(p.Income, held*g.Cfg.InterestPercent/100) || g.Budget != held+p.Income+p.Interest {
+			t.Fatalf("구간 %d 수입 %d(이전 %d) 보너스 %d 예산 %d", phase, p.Income, seen, p.Interest, g.Budget)
+		}
+		seen = p.Income
+		// 미리 보기는 상태를 바꾸지 않는다.
+		was := g.digest()
+		for _, o := range p.Options {
+			g.WithReward(o, func() {})
+		}
+		if g.digest() != was || g.RevenueMul() != 100+g.Cfg.RevenueStep*phase {
+			t.Fatal("미리 보기나 처리 수익이 다름")
+		}
+		g.must(Command{Type: "reward"})
+	}
+}
+
+func TestWebSocketIsFasterAndEarnsMore(t *testing.T) {
+	play := func(ws bool) (int, int) {
+		g := setup(t, func(c *Config) { c.RevenueEvery, c.Unlock.WebSocket = 5, 0 })
+		src, _ := g.wire()
+		if ws {
+			g.must(Command{Type: "websocket", ID: src})
+		}
+		held := g.Budget
+		g.run(60)
+		return g.P95(), g.Budget - held
+	}
+	slow, few := play(false)
+	fast, many := play(true)
+	if fast >= slow || many <= few {
+		t.Fatalf("왕복 %d→%d 수익 %d→%d", slow, fast, few, many)
 	}
 }

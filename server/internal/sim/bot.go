@@ -5,6 +5,7 @@ import "sort"
 // Bot은 밸런스 확인과 테스트에 쓰는 자동 플레이어다. 사람과 같은 명령만 쓴다.
 type Bot struct {
 	Link, API, DB, LinkUp, Reroute, Prepare bool
+	Storage, Redis, WS                      bool // 성장 단계에서 열리는 것
 
 	seq int64
 }
@@ -37,7 +38,7 @@ func (b *Bot) Act(s *Sim) {
 	if s.Pending != nil {
 		best, at := 99, 0
 		for i, o := range s.Pending.Options {
-			for rank, id := range []string{"dbIndex", "apiOpt", "cache", "linkRate", "budget", "health", "queue", "deadline"} {
+			for rank, id := range []string{"dbIndex", "apiOpt", "cache", "linkRate", "budget", "health", "storage", "queue", "deadline"} {
 				if o.ID == id && rank < best {
 					best, at = rank, i
 				}
@@ -77,6 +78,47 @@ func (b *Bot) Act(s *Sim) {
 		}
 		connect(n, apis, want)
 	}
+	if b.Storage && s.Unlocked(s.Cfg.Unlock.Storage) {
+		for _, d := range dbs {
+			if d.Data*100 >= s.StorageCap(d)*85 {
+				b.do(s, Command{Type: "storage", ID: d.ID})
+			}
+		}
+	}
+	if b.Redis && s.Unlocked(s.Cfg.Unlock.Redis) {
+		caches := servers(s, Cache)
+		if len(caches) < 1+len(apis)/6 {
+			if _, ok := b.place(s, "redis", apis[0].X, apis[0].Y); ok {
+				caches = servers(s, Cache)
+			}
+		}
+		for _, a := range apis {
+			tied := false
+			for _, l := range s.outs[a.ID] {
+				tied = tied || s.Node(l.To).Kind == Cache
+			}
+			if near := nearest(caches, a.X, a.Y); !tied && len(near) > 0 {
+				b.do(s, Command{Type: "link", From: a.ID, To: near[0].ID})
+			}
+		}
+		for _, c := range caches {
+			if len(c.Queue)*2 >= s.ServerLevel(c).Queue {
+				b.do(s, Command{Type: "upgradeNode", ID: c.ID})
+			}
+		}
+	}
+	// 예산이 남으면 가장 많이 쓰는 클라이언트 링크부터 바꾼다.
+	if b.WS && s.Budget >= s.WSCost()*2 {
+		var busy *Link
+		for _, l := range s.Links {
+			if s.CanWS(l) && l.Used() >= 2 && (busy == nil || l.Used() > busy.Used()) {
+				busy = l
+			}
+		}
+		if busy != nil {
+			b.do(s, Command{Type: "websocket", ID: busy.ID})
+		}
+	}
 	// 가장 뒤쪽 병목부터 해결한다. 예산이 모자라면 다른 곳에 쓰지 않고 모은다.
 	if b.DB {
 		for _, d := range dbs {
@@ -101,6 +143,11 @@ func (b *Bot) Act(s *Sim) {
 	if b.LinkUp {
 		for _, l := range s.Links {
 			if l.Waiting >= 2 && !l.Jam && !l.Draining {
+				// 같은 예산으로 더 많이 늘어나는 쪽을 고른다.
+				up := s.Cfg.LinkLevel(l.Level + 1).Cost
+				if b.WS && s.CanWS(l) && (s.WSLinkRate(l)-s.LinkRate(l))*up > (s.NextLinkRate(l)-s.LinkRate(l))*s.WSCost() && b.do(s, Command{Type: "websocket", ID: l.ID}) {
+					continue
+				}
 				b.do(s, Command{Type: "upgradeLink", ID: l.ID})
 			}
 		}
@@ -156,8 +203,11 @@ func (l *Link) Used() int { return l.Lanes[Fwd].Used }
 // place는 기준점에서 가까운 빈 칸에 짓는다.
 func (b *Bot) place(s *Sim, kind string, x, y int) (int, bool) {
 	k := API
-	if kind == "db" {
+	switch kind {
+	case "db":
 		k = DB
+	case "redis":
+		k = Cache
 	}
 	if s.Budget < s.BuildCost(k) {
 		return 0, false

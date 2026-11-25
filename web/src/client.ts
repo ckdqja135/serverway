@@ -1,14 +1,14 @@
-import { FAIL, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Result } from './types'
+import { FAIL, nodeName, perSec, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Opened, type Result } from './types'
 import { sfx, type Sfx } from './sound'
 import { host, type Wire } from './wire'
 
 export interface Dot { id: number; link: number; lane: 0 | 1; dep: number; arr: number; stage: number; strand: number; p: number }
-export interface Fx { kind: 'done' | 'fail' | 'cache' | 'spawn' | 'up'; x: number; y: number; at: number; text?: string }
+export interface Fx { kind: 'done' | 'fail' | 'cache' | 'spawn' | 'up' | 'gain'; x: number; y: number; at: number; text?: string }
 export interface LogLine { id: number; at: number; code: number; text: string }
 export type Status = 'connecting' | 'open' | 'lost' | 'ended'
 
 const MAX_FX = 120
-const DID: Record<string, Sfx> = { link: 'link', build: 'build', upgradeNode: 'up', upgradeLink: 'up', removeLink: 'remove', removeNode: 'remove' } // 명령이 받아들여졌을 때의 소리
+const DID: Record<string, Sfx> = { link: 'link', build: 'build', upgradeNode: 'up', upgradeLink: 'up', storage: 'up', websocket: 'up', removeLink: 'remove', removeNode: 'remove' } // 명령이 받아들여졌을 때의 소리
 const MAX_LOG = 60
 
 function turn(o: { x: number; y: number; w?: number; h?: number }) {
@@ -16,6 +16,16 @@ function turn(o: { x: number; y: number; w?: number; h?: number }) {
   if (o.w !== undefined && o.h !== undefined) [o.w, o.h] = [o.h, o.w]
 }
 const turnHead = (h: Head) => { turn(h.area); h.upcoming.forEach(turn) }
+
+// grown은 노드의 능력치가 오른 내용이다. 줄거나 그대로면 빈 글이다.
+function grown(old: GNode, n: GNode) {
+  const out: string[] = []
+  if (Number(perSec(n)) > Number(perSec(old))) out.push(`초당 ${perSec(old)} → ${perSec(n)}`)
+  else if (n.limit > old.limit) out.push(`대기열 ${old.limit} → ${n.limit}`)
+  if (n.hit > old.hit) out.push(`적중률 ${old.hit}% → ${n.hit}%`)
+  if (n.store && old.store && n.store.cap > old.store.cap) out.push(`저장 공간 ${old.store.cap.toLocaleString()} → ${n.store.cap.toLocaleString()}`)
+  return out.join(', ')
+}
 
 // GameClient는 서버의 기준 상태를 받아 두는 곳이다. 점수나 성공 여부를 스스로 계산하지 않는다.
 export class GameClient {
@@ -35,6 +45,7 @@ export class GameClient {
   version = 0
   resets = 0
   ready = false
+  news: { rank: string; opened: Opened[] } | null = null // 성장하면서 새로 열린 기능
   grew = false // 이번 구간에서 판이 넓어졌는지
   flip = false // 세로 화면에서는 x와 y를 바꿔 보여 준다
   dotPos: (d: Dot) => { x: number; y: number } | null = () => null
@@ -121,7 +132,7 @@ export class GameClient {
       this.lanes.clear(); this.where.clear(); this.strands.clear(); this.queue = []; this.waits.clear()
       for (const [id, link, dep, arr, stage] of m.moving) this.addDot(id, link, dep, arr, stage, true)
       this.rt = m.head.tick
-      if (fresh) { this.fx = []; this.logs = []; this.notice = null; this.resets++ }
+      if (fresh) { this.fx = []; this.logs = []; this.notice = null; this.news = null; this.resets++ }
       this.status = 'open'
       this.ready = true
     } else if (m.epoch !== this.epoch) return
@@ -130,13 +141,20 @@ export class GameClient {
       if (m.head.phase > this.head.phase) this.grew = m.head.area.w * m.head.area.h > this.head.area.w * this.head.area.h
       if (m.head.reward && !this.head.reward) sfx('reward')
       if (m.head.over && !this.head.over) sfx(m.head.over === 'done' ? 'finish' : 'over')
+      if (m.head.rank > this.head.rank) this.rankUp(this.head, m.head)
       this.head = m.head
+      const now = performance.now()
       for (const n of m.nodes ?? []) {
         const old = this.nodes.get(n.id)
-        if (old && n.level > old.level) this.addFx({ kind: 'up', x: n.x, y: n.y, at: performance.now() })
+        if (old && n.level > old.level) this.addFx({ kind: 'up', x: n.x, y: n.y, at: now })
+        if (old) this.gain(n.x, n.y - 1.1, grown(old, n), now)
         this.nodes.set(n.id, n)
       }
-      for (const l of m.links ?? []) this.links.set(l.id, l)
+      for (const l of m.links ?? []) {
+        const old = this.links.get(l.id), a = this.nodes.get(l.from), b = this.nodes.get(l.to)
+        if (old && a && b && l.cap > old.cap) this.gain((a.x + b.x) / 2, (a.y + b.y) / 2, `초당 ${old.cap} → ${l.cap}`, now)
+        this.links.set(l.id, l)
+      }
       for (const id of m.goneNodes ?? []) this.nodes.delete(id)
       for (const id of m.goneLinks ?? []) { this.links.delete(id); this.lanes.delete(`${id}:0`); this.lanes.delete(`${id}:1`) }
       if (m.events) this.queue.push(...m.events)
@@ -167,6 +185,16 @@ export class GameClient {
     return d
   }
 
+  // 능력치가 오른 자리에 얼마나 올랐는지 띄운다.
+  private gain(x: number, y: number, text: string, at: number) { if (text) this.addFx({ kind: 'gain', x, y, at, text }) }
+
+  private rankUp(old: Head, now: Head) {
+    const opened = (Object.keys(now.open) as Opened[]).filter((k) => now.open[k] && !old.open[k])
+    sfx('finish')
+    if (opened.length) this.news = { rank: now.rankName, opened }
+    else this.say(`${now.rankName} 단계로 성장했습니다`)
+  }
+
   private addFx(f: Fx) {
     // 같은 자리의 같은 효과는 잠깐 동안 하나만 보인다. 표시만 줄인다.
     if (f.kind !== 'fail' && this.fx.some((o) => o.kind === f.kind && o.x === f.x && o.y === f.y && f.at - o.at < 330)) return
@@ -193,7 +221,7 @@ export class GameClient {
     let i = 0
     for (; i < this.queue.length && this.queue[i].at <= this.rt; i++) this.apply(this.queue[i], now)
     if (i) this.queue.splice(0, i)
-    while (this.fx.length && now - this.fx[0].at > 1600) this.fx.shift()
+    while (this.fx.length && now - this.fx[0].at > 2600) this.fx.shift()
   }
 
   private apply(e: GEvent, now: number) {
@@ -226,6 +254,11 @@ export class GameClient {
         if (e.t === 'notice' || e.t === 'active') sfx('alert')
         if (e.t === 'ended') { sfx('recover'); this.say('장애가 복구되었습니다') }
         if (e.t === 'canceled') this.say('장애 대상이 사라져 이번 장애는 지나갔습니다')
+        break
+      case 'store':
+        if (!node) break
+        if (e.a !== 100) sfx('alert')
+        this.say(e.a === 100 ? `${nodeName(node)}의 저장 공간이 가득 차서 느려졌습니다` : `${nodeName(node)}의 저장 공간이 ${e.a}% 찼습니다`, e.a === 100)
         break
       case 'source': sfx('source'); this.say('새 클라이언트가 들어왔습니다. 서버로 연결하세요'); break
     }

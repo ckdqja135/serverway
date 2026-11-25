@@ -11,6 +11,7 @@ const (
 	Source Kind = iota
 	API
 	DB
+	Cache // Redis
 )
 
 // 실패 사유
@@ -53,6 +54,15 @@ type Request struct {
 	Depart   int
 	Arrive   int
 	Path     []int // 지나왔고 아직 되돌아가지 않은 링크
+	Hit      bool  // DB 대신 Redis가 응답한다
+}
+
+// want는 다음 처리를 할 노드 종류다.
+func (r *Request) want() Kind {
+	if k := stageKind(r.Stage); k == API || !r.Hit {
+		return k
+	}
+	return Cache
 }
 
 type Job struct {
@@ -83,6 +93,8 @@ type Node struct {
 	Done     int
 	Fail     [failKinds]int
 	Stuck    int // 처리를 마쳤지만 보내지 못하는 요청 수
+	Data     int // DB에 쌓인 데이터
+	Store    int // 저장 공간 증설 단계
 }
 
 // Lane은 한 방향 차선이다. 앞이 막히면 뒤 요청이 줄을 선다.
@@ -109,6 +121,7 @@ type Link struct {
 	Pending  int // 이 링크로 나갔다가 아직 돌아오지 않은 요청 수
 	Draining bool
 	Blocked  bool
+	WS       bool // WebSocket으로 전환한 링크
 	Jam      bool // 도착 서버가 꽉 차서 맨 앞 요청이 들어가지 못함
 	Passed   int
 	Waiting  int // 이 링크로 나가려고 기다리는 요청 수
@@ -140,9 +153,11 @@ type Coming struct {
 }
 
 type Reward struct {
-	Phase   int         `json:"phase"`
-	Income  int         `json:"income"`
-	Options []RewardDef `json:"options"`
+	Phase    int
+	Income   int
+	Held     int // 구간을 넘길 때 가지고 있던 예산
+	Interest int
+	Options  []RewardDef
 }
 
 // Event는 화면 표시용이다. 게임 계산에는 쓰지 않는다.
@@ -186,7 +201,7 @@ type Sim struct {
 	Failures  [failKinds]int
 	Active    int
 	PeakWait  int
-	Bonus     struct{ Queue, Deadline, LinkRate, APIOpt, DBIndex, Cache int }
+	Bonus     struct{ Queue, Deadline, LinkRate, APIOpt, DBIndex, Cache, Storage int }
 	Events    []Event
 	Log       []LogEntry
 	Spent     int
@@ -303,20 +318,37 @@ func (s *Sim) Node(id int) *Node { return s.nodeIx[id] }
 func (s *Sim) Link(id int) *Link { return s.linkIx[id] }
 
 func (s *Sim) def(k Kind) ServerDef {
-	if k == DB {
+	switch k {
+	case DB:
 		return s.Cfg.DB
+	case Cache:
+		return s.Cfg.Redis
 	}
 	return s.Cfg.API
 }
 
-// BuildCost는 다음 한 대를 짓는 비용이다. 처음부터 있던 한 대 이후로 조금씩 오른다.
+// Unlocked는 그 성장 단계에서 열리는 기능을 쓸 수 있는지 답한다.
+func (s *Sim) Unlocked(rank int) bool {
+	r, _ := s.Rank()
+	return !s.Cfg.Practice && r >= rank
+}
+
+// BuildCost는 다음 한 대를 짓는 비용이다. 첫 한 대 이후로 조금씩 오른다.
 func (s *Sim) BuildCost(k Kind) int {
-	d := s.def(k)
-	return d.Cost + d.CostStep*max(0, s.count(k)-1)
+	d, n := s.def(k), s.count(k)
+	if k != Cache {
+		n = max(0, n-1) // 처음부터 있던 한 대
+	}
+	return d.Cost + d.CostStep*n
 }
 
 // RevenueNeed는 예산 1을 버는 데 필요한 완료 수다.
-func (s *Sim) RevenueNeed() int { return s.Cfg.RevenueEvery + s.count(API) + s.count(DB) }
+func (s *Sim) RevenueNeed() int {
+	return s.Cfg.RevenueEvery + s.count(API) + s.count(DB) + s.count(Cache)
+}
+
+// RevenueMul은 구간을 넘길수록 늘어나는 처리 수익(퍼센트)이다.
+func (s *Sim) RevenueMul() int { return 100 + s.Cfg.RevenueStep*s.Phase }
 
 func (s *Sim) count(k Kind) int {
 	c := 0
@@ -343,8 +375,11 @@ func (s *Sim) NextLevel(n *Node) ServerLevel {
 // boosted는 보상으로 얻은 개선을 반영한다.
 func (s *Sim) boosted(k Kind, lv ServerLevel) ServerLevel {
 	lv.Queue += s.Bonus.Queue
-	opt := s.Bonus.APIOpt
-	if k == DB {
+	opt := 0
+	switch k {
+	case API:
+		opt = s.Bonus.APIOpt
+	case DB:
 		opt = s.Bonus.DBIndex
 	}
 	lv.ProcMs = lv.ProcMs * (100 - min(opt, 60)) / 100
@@ -402,7 +437,95 @@ func (s *Sim) RPS10() int {
 	return t
 }
 
-func (s *Sim) LinkRate(l *Link) int { return s.Cfg.LinkLevel(l.Level).PerSec + s.Bonus.LinkRate }
+func (s *Sim) LinkRate(l *Link) int { return s.linkRate(l.Level, l.WS) }
+
+// NextLinkRate는 한 단계 올렸을 때, WSLinkRate는 WebSocket으로 전환했을 때의 전송량이다.
+func (s *Sim) NextLinkRate(l *Link) int { return s.linkRate(l.Level+1, l.WS) }
+func (s *Sim) WSLinkRate(l *Link) int   { return s.linkRate(l.Level, true) }
+
+func (s *Sim) linkRate(level int, ws bool) int {
+	v := s.Cfg.LinkLevel(level).PerSec * (100 + s.Bonus.LinkRate)
+	if ws {
+		v = v * s.Cfg.WebSocket.RatePercent / 100
+	}
+	return (v + 99) / 100
+}
+
+// WSTravel은 WebSocket으로 전환했을 때의 편도 틱 수다.
+func (s *Sim) WSTravel(l *Link) int {
+	p := s.Cfg.WebSocket.SpeedPercent
+	return max(1, (l.Travel*100+p-1)/p)
+}
+
+func (s *Sim) WSCost() int {
+	n := 0
+	for _, l := range s.Links {
+		if l.WS && !l.Draining {
+			n++
+		}
+	}
+	return s.Cfg.WebSocket.Cost + s.Cfg.WebSocket.CostStep*n
+}
+
+// CanWS는 전환할 수 있는 링크인지 답한다. 클라이언트와 서버 사이에서만 쓴다.
+func (s *Sim) CanWS(l *Link) bool {
+	return s.Unlocked(s.Cfg.Unlock.WebSocket) && !l.WS && !l.Draining && s.Node(l.From).Kind == Source
+}
+
+// 저장 공간
+
+// StorageCap은 DB가 담을 수 있는 데이터 양이다.
+func (s *Sim) StorageCap(n *Node) int  { return s.storageCap(n.Store) }
+func (s *Sim) NextStorage(n *Node) int { return s.storageCap(n.Store + 1) }
+
+func (s *Sim) storageCap(level int) int {
+	c := s.Cfg.Storage.Base
+	for range level {
+		c = c * (100 + s.Cfg.Storage.GrowPercent) / 100
+	}
+	return c * (100 + s.Bonus.Storage) / 100
+}
+
+func (s *Sim) StorageCost(n *Node) int { return s.Cfg.Storage.Cost + s.Cfg.Storage.CostStep*n.Store }
+
+// Pace는 장애와 저장 공간을 모두 반영한 처리 속도 퍼센트다.
+func (s *Sim) Pace(n *Node) int {
+	if n.Kind == DB && n.Data > 0 && n.Data >= s.StorageCap(n) {
+		return n.Speed * s.Cfg.Storage.SlowPercent / 100
+	}
+	return n.Speed
+}
+
+// store는 처리한 요청 하나를 저장한다. 경고선과 상한을 넘는 순간을 알린다.
+func (s *Sim) store(n *Node) {
+	limit := s.StorageCap(n)
+	if n.Data >= limit {
+		return
+	}
+	n.Data++
+	if n.Data == limit {
+		s.emit(Event{K: "store", Node: n.ID, A: 100})
+	} else if warn := limit * s.Cfg.Storage.WarnPercent / 100; n.Data == warn {
+		s.emit(Event{K: "store", Node: n.ID, A: s.Cfg.Storage.WarnPercent})
+	}
+}
+
+// spread는 데이터를 모든 DB에 저장 공간에 비례해 다시 나눈다. 샤드가 늘거나 줄 때 부른다.
+func (s *Sim) spread(extra int) {
+	total, room := extra, 0
+	for _, n := range s.Nodes {
+		if n.Kind == DB && !n.Draining {
+			total += n.Data
+			room += s.StorageCap(n)
+		}
+	}
+	for _, n := range s.Nodes {
+		if n.Kind == DB && !n.Draining && room > 0 {
+			limit := s.StorageCap(n)
+			n.Data = min(limit, total*limit/room)
+		}
+	}
+}
 
 // Surge는 오래 버틸수록 커지는 전체 트래픽 배율(퍼센트)이다.
 func (s *Sim) Surge(tick int) int {
@@ -694,7 +817,7 @@ func (s *Sim) stepArrivals() {
 			r := ln.Moving[0]
 			if d == Fwd {
 				n := s.Node(l.To)
-				if n.Kind == stageKind(r.Stage) && len(n.Queue) >= s.ServerLevel(n).Queue {
+				if n.Kind == r.want() && len(n.Queue) >= s.ServerLevel(n).Queue {
 					l.Jam = true
 					continue
 				}
@@ -721,7 +844,7 @@ func (s *Sim) comeBack(r *Request, l *Link) {
 		n.Out = append(n.Out, r)
 		return
 	}
-	s.complete(r, n)
+	s.complete(r, n, l.WS)
 }
 
 func clearTail[T any](v []*T, from int) {
@@ -738,7 +861,7 @@ func stageKind(stage int) Kind {
 }
 
 func (s *Sim) arrive(r *Request, n *Node) {
-	if n.Kind != stageKind(r.Stage) || r.Hops > s.Cfg.Request.MaxHops {
+	if n.Kind != r.want() || r.Hops > s.Cfg.Request.MaxHops {
 		s.fail(r, FailNoRoute, n, nil)
 		return
 	}
@@ -752,10 +875,11 @@ func (s *Sim) stepJobs() {
 		if n.Kind == Source {
 			continue
 		}
+		pace := s.Pace(n)
 		keep := n.Jobs[:0]
 		for _, j := range n.Jobs {
 			if !j.Done {
-				j.Left -= n.Speed
+				j.Left -= pace
 				if j.Left <= 0 {
 					j.Done = true
 					j.Req.Stage++
@@ -768,6 +892,14 @@ func (s *Sim) stepJobs() {
 						s.emit(Event{K: "cache", Req: j.Req.ID, Node: n.ID})
 						continue
 					}
+					if n.Kind == API {
+						if hit := s.redisHit(n); hit > 0 {
+							j.Req.Hit = s.rand(100) < hit
+						}
+					}
+					if n.Kind == DB && s.Unlocked(s.Cfg.Unlock.Storage) {
+						s.store(n)
+					}
 				}
 			}
 			keep = append(keep, j)
@@ -777,7 +909,23 @@ func (s *Sim) stepJobs() {
 	}
 }
 
-func (s *Sim) complete(r *Request, n *Node) {
+// redisHit은 이 서버와 이어진 Redis 중 가장 높은 적중률이다.
+func (s *Sim) redisHit(n *Node) int {
+	hit := 0
+	for _, l := range s.outs[n.ID] {
+		if s.redisLink(l, true) {
+			hit = max(hit, s.ServerLevel(s.Node(l.To)).Hit)
+		}
+	}
+	return hit
+}
+
+func (s *Sim) redisLink(l *Link, faults bool) bool {
+	to := s.Node(l.To)
+	return !l.Draining && !(faults && l.Blocked) && to != nil && to.Kind == Cache && !to.Draining
+}
+
+func (s *Sim) complete(r *Request, n *Node, ws bool) {
 	r.State, r.Stage = Completed, Finished
 	s.Active--
 	s.Completed++
@@ -788,9 +936,14 @@ func (s *Sim) complete(r *Request, n *Node) {
 	s.Score += s.Cfg.ScorePerComplete
 	// 처리 수익. 서버가 많을수록 운영비가 들어 예산 1을 버는 데 더 많은 완료가 필요하다.
 	if s.Cfg.RevenueEvery > 0 {
-		if s.revenue++; s.revenue >= s.RevenueNeed() {
-			s.revenue = 0
-			s.Budget++
+		v := s.RevenueMul()
+		if ws {
+			v = v * s.Cfg.WebSocket.RevenuePercent / 100
+		}
+		s.revenue += v
+		if need := s.RevenueNeed() * 100; s.revenue >= need {
+			s.Budget += s.revenue / need
+			s.revenue %= need
 		}
 	}
 	gain := min(s.Cfg.Health.SuccessGain, s.gainLeft, s.Cfg.Health.Max-s.Health)
@@ -861,7 +1014,7 @@ func (s *Sim) eta(l *Link) int {
 	for _, o := range s.ins[to.ID] {
 		ahead += len(o.Lanes[Fwd].Moving)
 	}
-	proc := lv.ProcMs * 100 / TickMs / max(to.Speed, 10)
+	proc := lv.ProcMs * 100 / TickMs / max(s.Pace(to), 10)
 	return l.Travel + ahead*proc/lv.Slots
 }
 
@@ -872,11 +1025,20 @@ func (s *Sim) route(n *Node, r *Request) (*Link, int) {
 	var best, bestReady *Link
 	bestEta, readyEta := 0, 0
 	structural := false
+	if r.Hit && s.redisHit(n) == 0 {
+		r.Hit = false // 그 사이 Redis로 가는 길이 사라졌으면 DB로 간다
+	}
+	ok := func(l *Link, faults bool) bool {
+		if r.want() == Cache {
+			return s.redisLink(l, faults)
+		}
+		return s.usable(l, r.Stage, faults)
+	}
 	for _, l := range s.outs[n.ID] {
-		if s.usable(l, r.Stage, false) {
+		if ok(l, false) {
 			structural = true
 		}
-		if !s.usable(l, r.Stage, true) {
+		if !ok(l, true) {
 			continue
 		}
 		e := s.eta(l)
@@ -961,7 +1123,7 @@ func (s *Sim) stepDispatch() {
 		keep := n.Jobs[:0]
 		for _, j := range n.Jobs {
 			if j.Done {
-				if n.Kind == DB {
+				if n.Kind != API {
 					if l := s.backLink(j.Req); l.open(s, Back) {
 						s.send(l, Back, j.Req)
 						continue
@@ -1111,15 +1273,19 @@ func (s *Sim) stepCleanup() {
 	}
 	clearTail(s.Links, len(links))
 	s.Links = links
-	nodes := s.Nodes[:0]
+	nodes, moved := s.Nodes[:0], 0
 	for _, n := range s.Nodes {
 		if n.Draining && n.Pending == 0 && !s.linked(n.ID) {
+			moved += n.Data
 			continue
 		}
 		nodes = append(nodes, n)
 	}
 	clearTail(s.Nodes, len(nodes))
 	s.Nodes = nodes
+	if moved > 0 {
+		s.spread(moved)
+	}
 	if len(s.Links)+len(s.Nodes) != before {
 		s.reindex()
 	}
@@ -1157,21 +1323,24 @@ func (s *Sim) stepEnd() {
 	s.Phase++
 	e, list := s.Cfg.Endless, s.Cfg.PhaseIncome
 	income := list[min(s.Phase, len(list))-1] + max(0, s.Phase-len(list))*e.IncomeStep
-	s.Budget += income
+	held := s.Budget
+	interest := min(income, held*s.Cfg.InterestPercent/100)
+	s.Budget += income + interest
 	s.PhaseAt = s.Tick
 	s.PhaseEnd = s.Tick + min(max(e.PhaseMaxSec, s.Cfg.PhaseSeconds), s.Cfg.PhaseSeconds+s.Phase*e.PhaseStepSec)*TPS
 	// 더 좋아질 수 없는 보상은 빼고 고른다.
 	var pool []RewardDef
 	for _, r := range s.Cfg.Rewards {
 		if (r.ID == "cache" && s.Bonus.Cache >= 60) || (r.ID == "apiOpt" && s.Bonus.APIOpt >= 60) || (r.ID == "dbIndex" && s.Bonus.DBIndex >= 60) ||
-			(r.ID == "deadline" && s.Bonus.Deadline >= 16) || (r.ID == "health" && s.Health >= s.Cfg.Health.Max) {
+			(r.ID == "deadline" && s.Bonus.Deadline >= 16) || (r.ID == "health" && s.Health >= s.Cfg.Health.Max) || (r.ID == "linkRate" && s.Bonus.LinkRate >= 200) || (r.ID == "storage" && !s.Unlocked(s.Cfg.Unlock.Storage)) {
 			continue
 		}
+		r.Amount, r.Step = r.Amount+r.Step*s.Phase/10, 0
 		pool = append(pool, r)
 	}
 	a := s.rand(len(pool))
 	b := (a + 1 + s.rand(len(pool)-1)) % len(pool)
-	s.Pending = &Reward{Phase: s.Phase, Income: income, Options: []RewardDef{pool[a], pool[b]}}
+	s.Pending = &Reward{Phase: s.Phase, Income: income, Held: held, Interest: interest, Options: []RewardDef{pool[a], pool[b]}}
 }
 
 // Routed는 클라이언트에서 완료까지 이어지는 길이 있는지 구조만 보고 답한다.

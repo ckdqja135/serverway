@@ -1,13 +1,13 @@
 import type { Dot, GameClient } from './client'
 import { getPref } from './prefs'
-import { API, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
+import { API, CACHE, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
 
 const LIGHT = {
   paper: '#e9ecf7', area: '#f7f8fd', edge: '#d5daee', dot: '#cfd5ea', ink: '#2a2d4f', sub: '#6b7095', shade: 'rgba(52,58,110,0.10)',
   coral: '#ff8a70', coralTop: '#ffe0d6', coralLow: '#e0745b',
   peri: '#6c7cff', periTop: '#e0e4ff', periLow: '#4f5dd6',
   mint: '#2fb79a', mintTop: '#d3f3ea', mintLow: '#1f8f78',
-  amber: '#e39a00', red: '#e0404a', tube: '#ffffff', tubeEdge: '#a7b2e8', violet: '#8c5be8',
+  amber: '#e39a00', red: '#e0404a', tube: '#ffffff', tubeEdge: '#a7b2e8', violet: '#8c5be8', violetTop: '#eadfff', violetLow: '#6a3fc4', ws: '#19a7c4',
   tubeFull: '#ffe9ea', tubeJam: '#fff4dc', tubeMid: '#dfe3f5', arrow: '#aab3e0', slot: '#ffffff', bead: '#c9cfe6', downTop: '#e7e7ee', badTop: '#ffd9db',
 }
 const DARK: typeof LIGHT = {
@@ -15,7 +15,7 @@ const DARK: typeof LIGHT = {
   coral: '#ff8a70', coralTop: '#56342f', coralLow: '#c25f48',
   peri: '#7d8bff', periTop: '#333a72', periLow: '#4f5dd6',
   mint: '#35c9a9', mintTop: '#1f4a45', mintLow: '#1b7f6b',
-  amber: '#e39a00', red: '#f0505a', tube: '#2c3157', tubeEdge: '#5b66ad', violet: '#b08cff',
+  amber: '#e39a00', red: '#f0505a', tube: '#2c3157', tubeEdge: '#5b66ad', violet: '#b08cff', violetTop: '#43336e', violetLow: '#6a3fc4', ws: '#2cc0de',
   tubeFull: '#4a2532', tubeJam: '#43371c', tubeMid: '#434a7c', arrow: '#7480c4', slot: '#14162a', bead: '#474e80', downTop: '#3c3e55', badTop: '#4a2532',
 }
 let C = LIGHT
@@ -96,7 +96,7 @@ export class Board {
   private sx = (x: number) => this.ox + (x + 0.5) * this.S
   private sy = (y: number) => this.oy + (y + 0.5) * this.S
   private cell(px: number, py: number) { return { x: Math.round((px - this.ox) / this.S - 0.5), y: Math.round((py - this.oy) / this.S - 0.5) } }
-  private radius = (n: GNode) => (n.kind === SOURCE ? 0.62 : (n.kind === API ? 0.82 : 0.9) * (1 + Math.min(6, n.level) * 0.035))
+  private radius = (n: GNode) => (n.kind === SOURCE ? 0.62 : (n.kind === API ? 0.82 : n.kind === CACHE ? 0.78 : 0.9) * (1 + Math.min(6, n.level) * 0.035))
 
   private layout(dt: number) {
     const w = this.cv.clientWidth, h = this.cv.clientHeight, r = Math.min(2, window.devicePixelRatio || 1)
@@ -109,10 +109,7 @@ export class Board {
     const next = this.game.head.area, fresh = this.resets !== this.game.resets
     if (fresh) { this.area = next; this.grow = null }
     else if (!this.game.head.reward) {
-      if (next.w * next.h > this.area.w * this.area.h) {
-        this.grow = { from: this.area, at: performance.now() }
-        this.game.say(`판이 넓어졌습니다 (${next.w} x ${next.h})`)
-      }
+      if (next.w * next.h > this.area.w * this.area.h) this.grow = { from: this.area, at: performance.now() }
       this.area = next
     }
     const a = this.area
@@ -217,7 +214,7 @@ export class Board {
     this.mouse = { x, y, inside: true }
     if (this.ui.tool !== 'connect') return
     const n = this.nodeAt(x, y)
-    if (n && n.kind !== DB && !n.draining) this.drag = { from: n.id, x, y, moved: false }
+    if (n && n.kind < DB && !n.draining) this.drag = { from: n.id, x, y, moved: false }
     else if (this.zoomed) this.pan = { x, y, vx: this.view.x, vy: this.view.y, moved: false }
   }
 
@@ -285,7 +282,7 @@ export class Board {
 
   linkError(a: GNode | undefined, b: GNode): string | null {
     if (!a) return '연결할 대상이 없습니다'
-    if (a.kind === SOURCE && b.kind === DB) return '요청은 서버 처리를 먼저 거쳐야 합니다'
+    if (a.kind === SOURCE && b.kind >= DB) return '요청은 서버 처리를 먼저 거쳐야 합니다'
     if (b.kind === SOURCE) return '응답은 같은 링크로 돌아오므로 따로 연결하지 않아도 됩니다'
     if (a.kind === b.kind) return '같은 종류끼리는 연결할 수 없습니다'
     if (a.draining || b.draining) return '철거 중이라 연결할 수 없습니다'
@@ -301,11 +298,13 @@ export class Board {
     for (const n of this.game.nodes.values()) if (Math.hypot(n.x - x, n.y - y) < c.minNodeGap) return '다른 노드와 너무 가깝습니다'
     for (const s of c.sources) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 클라이언트가 들어올 자리입니다'
     for (const s of head.upcoming) if (Math.hypot(s.x - x, s.y - y) < c.minNodeGap) return '새 클라이언트가 들어올 자리입니다'
-    if (head.servers >= c.maxServers) return `서버와 DB는 모두 ${c.maxServers}대까지 놓을 수 있습니다`
-    const cost = this.ui.tool === 'db' ? head.dbCost : head.apiCost
+    if (head.servers >= c.maxServers) return `모두 ${c.maxServers}대까지 놓을 수 있습니다`
+    const cost = this.buildCost()
     if (cost > head.budget) return `예산이 부족합니다 (필요 ${cost})`
     return null
   }
+
+  private buildCost() { const h = this.game.head; return this.ui.tool === 'db' ? h.dbCost : this.ui.tool === 'redis' ? h.redisCost : h.apiCost }
 
   // 그리기
 
@@ -372,16 +371,16 @@ export class Board {
     const g = this.ctx, S = this.S
     const width = (0.08 + strands(l.level) * 0.26) * S
     const sel = this.ui.selection?.type === 'link' && this.ui.selection.id === l.id
-    const edge = l.state === 'blocked' ? C.red : l.state === 'full' ? C.red : l.state === 'jam' ? C.amber : sel ? C.peri : C.tubeEdge
+    const edge = l.state === 'blocked' ? C.red : l.state === 'full' ? C.red : l.state === 'jam' ? C.amber : sel ? C.peri : l.ws ? C.ws : C.tubeEdge
     g.lineCap = 'butt'
     g.lineJoin = 'round'
     g.globalAlpha = l.draining ? 0.45 : 1
     this.trace(p); g.strokeStyle = C.area; g.lineWidth = width + 9; g.stroke() // 교차해도 이어지지 않음을 보이는 틈
     this.trace(p); g.strokeStyle = edge; g.lineWidth = width + (sel ? 6 : 3.5); g.stroke()
     this.trace(p); g.strokeStyle = l.state === 'full' ? C.tubeFull : l.state === 'jam' ? C.tubeJam : C.tube; g.lineWidth = width; g.stroke()
-    this.trace(p); g.strokeStyle = C.tubeMid; g.lineWidth = 1; g.setLineDash([3, 5]); g.stroke(); g.setLineDash([])
+    this.trace(p); g.strokeStyle = l.ws ? C.ws : C.tubeMid; g.lineWidth = l.ws ? 2 : 1; g.setLineDash(l.ws ? [] : [3, 5]); g.stroke(); g.setLineDash([])
     // 나가는 방향 표시
-    g.strokeStyle = C.arrow
+    g.strokeStyle = l.ws ? C.ws : C.arrow
     g.lineWidth = 1.6
     for (const t of [0.28, 0.55, 0.82]) {
       const off = 0.035 + strands(l.level) * 0.065
@@ -416,7 +415,7 @@ export class Board {
         if (d.id % skip) return
         const q = this.at(p, d.lane ? 1 - d.p : d.p, this.offset(l, d.lane, d.strand))
         const X = this.sx(q.x), Y = this.sy(q.y), r = S * 0.105
-        const col = d.stage === 0 ? C.coral : d.stage === 1 ? C.peri : C.mint
+        const col = d.stage === 0 ? C.coral : d.stage === 1 ? (this.game.nodes.get(l.to)?.kind === CACHE ? C.violet : C.peri) : C.mint
         g.globalAlpha = 0.28
         g.fillStyle = col
         g.beginPath(); g.arc(X, Y, r * 1.9, 0, 7); g.fill()
@@ -466,6 +465,7 @@ export class Board {
     const bob = working && !this.game.head.paused ? Math.sin(now / 130 + n.id) * S * 0.012 : 0
     if (n.kind === SOURCE) this.source(x, y, r, now)
     else if (n.kind === API) this.api(n, x, y + bob, r)
+    else if (n.kind === CACHE) this.redis(n, x, y + bob, r)
     else this.db(n, x, y + bob, r)
     this.beads(n, x, y, r)
     g.globalAlpha = 1
@@ -475,6 +475,7 @@ export class Board {
     g.fillStyle = C.ink
     const name = nodeName(n)
     g.fillText(n.kind === SOURCE ? name : `${name}  Lv${n.level + 1}`, x, y + r + S * 0.62)
+    if (n.store) this.storage(n.store.data / n.store.cap, x, y + r + S * 0.92)
   }
 
   private source(x: number, y: number, r: number, now: number) {
@@ -532,6 +533,29 @@ export class Board {
     const p = j.e > j.s ? Math.min(1, Math.max(0.04, (this.game.rt - j.s) / (j.e - j.s))) : 0.5
     g.fillStyle = n.speed === 0 ? '#8a8ca3' : col
     g.beginPath(); g.moveTo(x, y); g.arc(x, y, r * 0.8, -Math.PI / 2, -Math.PI / 2 + p * 2 * Math.PI); g.closePath(); g.fill()
+  }
+
+  // 저장 공간이 찬 정도
+  private storage(full: number, x: number, y: number) {
+    const g = this.ctx, w = this.S * 1.7, h = Math.max(4, this.S * 0.13)
+    g.fillStyle = C.bead
+    g.beginPath(); g.roundRect(x - w / 2, y, w, h, h / 2); g.fill()
+    g.fillStyle = full >= 1 ? C.red : full * 100 >= this.game.config.storageWarn ? C.amber : C.mint
+    g.beginPath(); g.roundRect(x - w / 2, y, Math.max(h, w * Math.min(1, full)), h, h / 2); g.fill()
+  }
+
+  private redis(n: GNode, x: number, y: number, r: number) {
+    const g = this.ctx
+    this.plate((dy) => { g.beginPath(); g.roundRect(x - r * 0.92, y + dy - r * 0.92, r * 1.84, r * 1.84, r * 0.42) }, C.violetTop, C.violetLow, C.violet)
+    // 번개
+    g.globalAlpha *= 0.28
+    g.fillStyle = C.violet
+    g.beginPath()
+    for (const [a, b] of [[0.12, -0.72], [-0.46, 0.12], [-0.04, 0.12], [-0.14, 0.72], [0.46, -0.14], [0.04, -0.14]]) g.lineTo(x + a * r, y + b * r)
+    g.closePath(); g.fill()
+    g.globalAlpha = n.draining ? 0.5 : 1
+    if (n.slots > 4) return this.gauge(x, y, r * 0.56, n, C.violet)
+    for (let i = 0; i < n.slots; i++) this.slot(x + (i % 2 ? 0.4 : -0.4) * r, y + (i < 2 ? -0.4 : 0.4) * r, r * 0.25, n.jobs[i], n, C.violet)
   }
 
   private db(n: GNode, x: number, y: number, r: number) {
@@ -616,6 +640,8 @@ export class Board {
     const stuck = n.stuck > 0 && n.stuck >= n.slots
     if (n.state === 'full' && !stuck) this.pill('처리 한계', x, y, C.red, 'warn')
     else if (stuck) this.pill('앞이 막힘', x, y, C.amber)
+    else if (n.store && n.store.data >= n.store.cap) this.pill('저장 공간 가득', x, y, C.red, 'warn')
+    else if (n.store && n.store.data * 100 >= n.store.cap * this.game.config.storageWarn) this.pill(`저장 공간 ${Math.floor((n.store.data / n.store.cap) * 100)}%`, x, y, C.amber, 'warn')
   }
 
   private linkBadge(l: GLink) {
@@ -663,10 +689,10 @@ export class Board {
   private effects(now: number) {
     const g = this.ctx, S = this.S
     for (const e of this.game.fx) {
-      const t = (now - e.at) / (e.kind === 'fail' ? 1400 : 800)
+      const t = (now - e.at) / (e.kind === 'fail' ? 1400 : e.kind === 'gain' ? 2400 : 800)
       if (t < 0 || t > 1) continue
       const x = this.sx(e.x), y = this.sy(e.y)
-      g.globalAlpha = 1 - t
+      g.globalAlpha = e.kind === 'gain' ? Math.min(1, (1 - t) * 3) : 1 - t
       g.textAlign = 'center'
       g.textBaseline = 'middle'
       if (e.kind === 'fail') {
@@ -675,6 +701,8 @@ export class Board {
         g.beginPath(); g.moveTo(x - k, yy - k); g.lineTo(x + k, yy + k); g.moveTo(x + k, yy - k); g.lineTo(x - k, yy + k); g.stroke()
         g.fillStyle = C.red; g.font = `800 ${S * 0.28}px "Gothic A1"`
         g.fillText(e.text ?? '', x, yy - S * 0.32)
+      } else if (e.kind === 'gain') {
+        this.pill(e.text ?? '', x, y - Math.min(1, t * 4) * S * 0.35, C.mintLow)
       } else if (e.kind === 'cache') {
         g.fillStyle = C.violet; g.font = `800 ${S * 0.26}px "Gothic A1"`
         g.fillText('캐시', x + S * 0.5, y - S * 0.3 - t * S * 0.5)
@@ -713,16 +741,16 @@ export class Board {
   }
 
   private ghostServer() {
-    const g = this.ctx, S = this.S, c = this.cell(this.mouse.x, this.mouse.y), db = this.ui.tool === 'db'
+    const g = this.ctx, S = this.S, c = this.cell(this.mouse.x, this.mouse.y), tool = this.ui.tool, db = tool === 'db', redis = tool === 'redis'
     const why = this.buildError(c.x, c.y), x = this.sx(c.x), y = this.sy(c.y)
     g.globalAlpha = 0.6
     if (db) { g.beginPath(); g.ellipse(x, y, 0.9 * S, 0.62 * S, 0, 0, 7) }
+    else if (redis) { g.beginPath(); g.roundRect(x - 0.72 * S, y - 0.72 * S, 1.44 * S, 1.44 * S, 0.33 * S) }
     else this.hex(x, y, 0.82 * S)
-    g.fillStyle = why ? C.badTop : db ? C.mintTop : C.periTop; g.fill()
-    g.strokeStyle = why ? C.red : db ? C.mint : C.peri; g.lineWidth = 2.5; g.setLineDash([6, 5]); g.stroke(); g.setLineDash([])
+    g.fillStyle = why ? C.badTop : db ? C.mintTop : redis ? C.violetTop : C.periTop; g.fill()
+    g.strokeStyle = why ? C.red : db ? C.mint : redis ? C.violet : C.peri; g.lineWidth = 2.5; g.setLineDash([6, 5]); g.stroke(); g.setLineDash([])
     g.globalAlpha = 1
-    const h = this.game.head
-    this.pill(why ?? (db ? `DB 샤드 ${h.dbCost}` : `서버 추가 ${h.apiCost}`), x, y + (this.touch ? -1.9 : 1.25) * S, why ? C.red : db ? C.mintLow : C.periLow, why ? 'stop' : undefined)
+    this.pill(why ?? `${db ? 'DB 샤드' : redis ? 'Redis' : '서버 추가'} ${this.buildCost()}`, x, y + (this.touch ? -1.9 : 1.25) * S, why ? C.red : db ? C.mintLow : redis ? C.violetLow : C.periLow, why ? 'stop' : undefined)
   }
 
   private hint(h: Hint, now: number) {

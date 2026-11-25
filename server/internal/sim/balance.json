@@ -7,7 +7,9 @@
     { "atPhase": 3, "x": 0, "y": 0, "w": 28, "h": 15 }
   ],
   "initialBudget": 90,
-  "phaseIncome": [60, 75, 90, 100, 110, 115, 120, 120, 120],
+  "phaseIncome": [60, 75, 90, 100, 112, 125, 140, 155, 170],
+  "interestPercent": 15,
+  "revenueStep": 10,
   "revenueEvery": 5,
   "refundPercent": 50,
   "minNodeGap": 2,
@@ -36,6 +38,18 @@
       { "slots": 7, "procMs": 400, "queue": 14, "cost": 120 }
     ]
   },
+  "redis": {
+    "cost": 120, "costStep": 30,
+    "step": { "slots": 2, "queue": 4, "cost": 45, "hit": 4 },
+    "levels": [
+      { "slots": 4, "procMs": 120, "queue": 14, "cost": 0, "hit": 40 },
+      { "slots": 6, "procMs": 110, "queue": 18, "cost": 80, "hit": 47 },
+      { "slots": 8, "procMs": 100, "queue": 22, "cost": 110, "hit": 53 }
+    ]
+  },
+  "unlock": { "storage": 2, "redis": 3, "websocket": 3 },
+  "storage": { "base": 900, "growPercent": 80, "cost": 40, "costStep": 12, "warnPercent": 80, "slowPercent": 40 },
+  "websocket": { "cost": 40, "costStep": 5, "speedPercent": 200, "ratePercent": 200, "revenuePercent": 150 },
   "link": {
     "baseCost": 6, "perCell": 1, "cellsPerSec": 8, "roomPerCell": 2,
     "step": { "perSec": 6, "cost": 16 },
@@ -58,10 +72,10 @@
   ],
   "endless": {
     "sourceFromSec": 350, "sourceEverySec": 55, "sourceMinEverySec": 32, "sourceNoticeSec": 15,
-    "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 200, "surgeFromMin": 8, "surgePerMin": 5,
+    "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 200, "surgeFromMin": 8, "surgePerMin": 10,
     "faultFromSec": 400, "faultEverySec": 70, "faultMinEverySec": 40,
     "expandW": 5, "expandH": 3, "maxW": 60, "maxH": 32,
-    "incomeStep": 5, "phaseStepSec": 5, "phaseMaxSec": 75
+    "incomeStep": 15, "phaseStepSec": 5, "phaseMaxSec": 75
   },
   "ranks": [
     { "at": 0, "name": "사이드 프로젝트" },
@@ -72,13 +86,14 @@
     { "at": 20000, "name": "전설의 인프라" }
   ],
   "rewards": [
-    { "id": "budget", "amount": 60 },
-    { "id": "queue", "amount": 3 },
-    { "id": "deadline", "amount": 2 },
-    { "id": "linkRate", "amount": 1 },
-    { "id": "health", "amount": 25000 },
-    { "id": "apiOpt", "amount": 12 },
-    { "id": "dbIndex", "amount": 12 },
-    { "id": "cache", "amount": 12 }
+    { "id": "budget", "amount": 60, "step": 200 },
+    { "id": "queue", "amount": 4, "step": 5 },
+    { "id": "deadline", "amount": 3 },
+    { "id": "linkRate", "amount": 20 },
+    { "id": "health", "amount": 30000 },
+    { "id": "apiOpt", "amount": 15 },
+    { "id": "dbIndex", "amount": 15 },
+    { "id": "cache", "amount": 15 },
+    { "id": "storage", "amount": 30 }
   ]
 }

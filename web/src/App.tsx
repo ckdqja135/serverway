@@ -1,8 +1,9 @@
-import { Database, Hexagon, Maximize2, MousePointer2, Play, ScrollText, WifiOff, X } from 'lucide-react'
+import { Database, DatabaseZap, Hexagon, Maximize2, MousePointer2, Play, ScrollText, WifiOff, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Board, type Hint } from './board'
 import { GameClient } from './client'
-import { API, DB, SOURCE, type Fault, type Selection, type Tool } from './types'
+import { API, CACHE, DB, SOURCE, nodeName, type Fault, type Selection, type Tool } from './types'
+import { Boosts, News } from './ui/Growth'
 import { Hud } from './ui/Hud'
 import { Help, Menu, ResultModal, RewardModal } from './ui/Overlays'
 import { LessonCard, LessonEnd, LessonIntro, learned, setLearned, useLesson } from './ui/Lesson'
@@ -73,7 +74,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   })
 
   const h = g.ready ? g.head : null
-  const overlay = menu || help
+  const overlay = menu || help || !!g.news
   const [hidden, setHidden] = useState(document.hidden)
   const step = useTutorial(g)
   const lesson = useLesson(g, overlay || hidden)
@@ -92,30 +93,34 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
     return () => document.removeEventListener('visibilitychange', hide)
   }, [g])
 
+  const closeNews = () => { g.news = null; g.send('pause', { on: false }) }
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (!g.ready || e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey) return
       if (e.key === 'Escape') {
-        if (help) setHelp(false)
+        if (g.news) closeNews()
+        else if (help) setHelp(false)
         else if (menu) setMenu(false)
         else if (confirm) setConfirm(false)
         else if (tool !== 'connect') setTool('connect')
         else { board.current?.cancel(); select(null) }
         return
       }
-      if (menu || help || g.head.reward || g.head.over || e.repeat) return
+      if (overlay || g.head.reward || g.head.over || e.repeat) return
       if (lesson && (lesson.stage !== 'steps' || ' sS'.includes(e.key))) return // 튜토리얼은 시간을 스스로 다룬다
       if (e.key === ' ') { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); g.send('pause', { on: !g.head.paused }) }
       else if (e.key === 's' || e.key === 'S') g.send('speed', { speed: (g.head.speed % 3) + 1 })
       else if (e.key === '1') setTool('connect')
       else if (e.key === '2') setTool('api')
       else if (e.key === '3') setTool('db')
+      else if (e.key === '4' && g.head.open.redis) setTool('redis')
       else if ((e.key === 'u' || e.key === 'U') && sel) g.send(sel.type === 'node' ? 'upgradeNode' : 'upgradeLink', { id: sel.id })
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) setConfirm(true)
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [g, sel, tool, confirm, menu, help, lesson?.stage])
+  }, [g, sel, tool, confirm, menu, help, overlay, lesson?.stage])
 
   useEffect(() => {
     if (!g.notice) return
@@ -138,7 +143,9 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
           <button aria-pressed={tool === 'connect'} onClick={() => setTool('connect')}><MousePointer2 size={20} aria-hidden /><span><b>선택 / 연결</b>드래그로 링크</span><kbd>1</kbd></button>
           <button aria-pressed={tool === 'api'} className={h.budget < h.apiCost ? 'poor' : ''} onClick={() => setTool('api')}><Hexagon size={20} aria-hidden /><span><b>서버 추가</b>비용 {h.apiCost}, {count(API)}대</span><kbd>2</kbd></button>
           <button aria-pressed={tool === 'db'} className={h.budget < h.dbCost ? 'poor' : ''} onClick={() => setTool('db')}><Database size={20} aria-hidden /><span><b>DB 샤드 추가</b>비용 {h.dbCost}, {count(DB)}대</span><kbd>3</kbd></button>
+          {h.open.redis && <button aria-pressed={tool === 'redis'} className={h.budget < h.redisCost ? 'poor' : ''} onClick={() => setTool('redis')}><DatabaseZap size={20} aria-hidden /><span><b>Redis 추가</b>비용 {h.redisCost}, {count(CACHE)}대</span><kbd>4</kbd></button>}
         </div>
+        {!h.reward && <Boosts g={g} />}
         {zoomed && <button className="fit" onClick={() => board.current?.resetView()}><Maximize2 size={16} aria-hidden />전체 보기</button>}
         {log && <LogFeed g={g} onClose={() => setLog(false)} />}
         {!log && <button className="logopen" onClick={() => setLog(true)} aria-label="요청 로그 보기"><ScrollText size={17} /></button>}
@@ -156,6 +163,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
         {lesson?.stage === 'end' && <LessonEnd onDone={onLearned} onHome={() => { setLearned(); onHome() }} />}
         {menu && <Menu g={g} onSkip={onLearned} onClose={() => setMenu(false)} onHome={onHome} onRestart={restart} tutorial={tutorial} setTutorial={setTutorial} log={log} setLog={setLog} onHelp={() => { setMenu(false); setHelp(true) }} />}
         {help && <Help g={g} onClose={() => setHelp(false)} />}
+        <News g={g} onClose={closeNews} />
         {g.notice && <div key={g.notice.id} className={`toast ${g.notice.bad ? 'bad' : ''}`} role="status">{g.notice.text}</div>}
       </>}
       {g.status !== 'open' && <div className="veil"><div className="modal small center">
@@ -196,7 +204,9 @@ function useTutorial(g: GameClient): Step | null {
     const lone = nodes.find((n) => n.kind === SOURCE && !n.routed)
     if (lone) return { text: `아직 연결되지 않은 클라이언트가 있습니다 (클라이언트 ${lone.index}). 가까운 서버로 끌어 연결하세요.` }
     const server = nodes.find((n) => n.kind !== SOURCE && (n.state === 'busy' || n.state === 'full') && !(n.stuck > 0 && n.stuck >= n.slots))
-    if (server && !seen.jam) return { text: `${server.kind === API ? `서버 ${server.index}` : `DB ${server.index}`}에 구슬이 쌓이고 있습니다. 밀린 줄의 맨 앞이 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' 서버를 추가하세요.' : ' DB 샤드를 추가하세요. 서버를 늘려도 DB 병목은 풀리지 않습니다.'}`, done: ok('jam') }
+    if (server && !seen.jam) return { text: `${nodeName(server)}에 구슬이 쌓이고 있습니다. 밀린 줄의 맨 앞이 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' 서버를 추가하세요.' : server.kind === CACHE ? ' Redis를 하나 더 추가하세요.' : ' DB 샤드를 추가하세요. 서버를 늘려도 DB 병목은 풀리지 않습니다.'}`, done: ok('jam') }
+    const packed = nodes.find((n) => n.store && n.store.data * 100 >= n.store.cap * g.config.storageWarn)
+    if (packed && !seen.store) return { text: `${nodeName(packed)}의 저장 공간이 차고 있습니다. 눌러서 저장 공간을 늘리거나 DB 샤드를 추가해 나누세요.`, hint: { node: packed.id }, done: ok('store') }
     if (links.some((l) => l.state === 'full') && !seen.link) return { text: '빨간 링크는 전송 용량이 한계입니다. 눌러서 업그레이드하거나 링크를 하나 더 만드세요.', done: ok('link') }
     if (h.completed >= 2 && h.tick < 60 * g.config.tps && !seen.grow) return { text: '트래픽은 점점 늘어납니다. 노드나 링크를 누르면 여유가 얼마나 있는지 볼 수 있습니다.', done: ok('grow') }
     return null

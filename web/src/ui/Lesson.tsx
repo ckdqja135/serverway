@@ -1,8 +1,8 @@
-import { ArrowRight, CircleX, Coins, Database, GraduationCap, Hexagon, House, Play, SkipForward, TriangleAlert, Waypoints, Zap } from 'lucide-react'
+import { ArrowRight, CircleX, Coins, Database, DatabaseZap, GraduationCap, HardDrive, Hexagon, House, Play, SkipForward, TriangleAlert, Waypoints, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Hint } from '../board'
 import type { GameClient } from '../client'
-import { API, DB, SOURCE, nodeName, type GLink, type GNode } from '../types'
+import { API, DB, SOURCE, nodeName, perSec, type GLink, type GNode } from '../types'
 
 const LEARNED = 'serverway.learned'
 const MIN_READ = 3500 // 지켜보는 단계가 글을 읽기 전에 넘어가지 않게 하는 시간(ms)
@@ -24,7 +24,6 @@ interface Step {
 const nodes = (g: GameClient, kind: number) => [...g.nodes.values()].filter((n) => n.kind === kind && !n.draining)
 const between = (g: GameClient, a: number, b: number) => [...g.links.values()].find((l) => l.from === a && l.to === b && !l.draining)
 const toDB = (g: GameClient, api: GNode) => nodes(g, DB).some((d) => between(g, api.id, d.id))
-const perSec = (n: GNode) => ((n.slots * 1000) / n.procMs).toFixed(1)
 const load = (g: GameClient) => (nodes(g, SOURCE).reduce((s, n) => s + n.rate, 0) / 1000).toFixed(1)
 const apiLinks = (g: GameClient): GLink[] => [...g.links.values()].filter((l) => !l.draining && g.nodes.get(l.from)?.kind === API)
 
@@ -235,6 +234,8 @@ const GROW: [ReactNode, string, string][] = [
   [<Hexagon />, '서버 칸이 다 차고 구슬이 쌓임', '서버를 업그레이드하거나 추가합니다'],
   [<Waypoints />, '링크가 빨갛고 전송 한계가 뜸', '그 링크를 업그레이드하거나 다른 길을 하나 더 잇습니다'],
   [<Database />, 'DB에 줄이 생기고 뒤까지 밀림', 'DB를 업그레이드하거나 샤드를 추가해 서버에서 잇습니다'],
+  [<HardDrive />, 'DB 저장 공간이 차오름', '저장 공간을 늘리거나 샤드를 추가해 나눕니다'],
+  [<DatabaseZap />, '국민 서비스가 됨', '서버에 Redis를 잇고, 바쁜 클라이언트 링크를 WebSocket으로 바꿉니다'],
   [<CircleX />, '클라이언트에서 502가 남', '새 클라이언트를 가까운 서버로 연결합니다'],
   [<TriangleAlert />, '장애가 예고됨', '다른 서버와 우회 링크를 미리 준비합니다'],
   [<Zap />, '업그레이드 비용이 비싸짐', '새로 한 대 짓는 쪽과 비교합니다'],

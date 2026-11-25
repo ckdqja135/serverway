@@ -209,7 +209,9 @@ func (s *Session) snapshot() {
 		"config": map[string]any{"practice": c.Practice, "tps": sim.TPS, "healthMax": c.Health.Max,
 			"linkBase": c.Link.BaseCost, "linkPerCell": c.Link.PerCell, "minNodeGap": c.MinNodeGap, "maxServers": c.MaxServers,
 			"learnSeconds": c.Health.LearnSeconds, "startSec": c.Request.StartSec, "sources": reserved(c), "refundPercent": c.RefundPercent,
-			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent},
+			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent,
+			"redisHit": c.Redis.Levels[0].Hit, "wsSpeed": c.WebSocket.SpeedPercent, "wsRate": c.WebSocket.RatePercent, "wsRevenue": c.WebSocket.RevenuePercent,
+			"storageWarn": c.Storage.WarnPercent, "storageSlow": c.Storage.SlowPercent},
 		"head": makeHead(s.sim, s.why), "nodes": nodes, "links": links, "moving": moving, "result": makeResult(s.sim)})
 }
 

@@ -1,6 +1,6 @@
 import { Activity, Coins, FastForward, Gauge, HeartPulse, Pause, Play, Settings, Star, Timer, TriangleAlert } from 'lucide-react'
 import type { GameClient } from '../client'
-import { FAULT_TEXT, clockText, nodeName, type Fault } from '../types'
+import { FAULT_TEXT, clockText, nodeName, revenueText, type Fault } from '../types'
 
 export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void; onFocus: (f: Fault) => void }) {
   const { head: h, config: c } = g
@@ -19,7 +19,7 @@ export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void;
           <div className={`stat health ${tone}`}>
             <HeartPulse size={17} aria-hidden /><div><span>서비스 상태 {tone === 'good' ? '안정' : tone === 'warn' ? '주의' : '위험'}</span><div className="bar"><i style={{ width: `${hp}%` }} /></div></div><strong>{hp}%</strong>
           </div>
-          <Stat icon={<Coins size={17} />} id="budget" label={`예산 (${h.revenueNeed}건당 1)`} value={String(h.budget)} />
+          <Stat icon={<Coins size={17} />} id="budget" label={`예산 (${revenueText(h)})`} value={String(h.budget)} />
           <Stat icon={<Activity size={17} />} id="rps" label={h.surge > 100 ? `처리량 (트래픽 ${(h.surge / 100).toFixed(1)}배)` : '처리량'} value={`${(h.rps10 / 10).toFixed(1)}/s`} />
           <Stat icon={<Gauge size={17} />} id="p95" label="p95 왕복" value={h.p95 ? `${(h.p95 / 1000).toFixed(1)}s` : '-'} warn={h.p95 > h.deadline * 700} />
           <Stat icon={<Timer size={17} />} label={c.practice ? '연습 시간' : `마라톤 (보상 ${left}초)`} value={clockText(sec)} />

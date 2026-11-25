@@ -46,6 +46,9 @@ func main() {
 		{"우회로 없음", sim.Bot{Link: true, API: true, DB: true, LinkUp: true}},
 		{"균형", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true}},
 		{"균형과 장애 대비", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Prepare: true}},
+		{"균형과 저장 공간", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true}},
+		{"저장 공간과 Redis", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true}},
+		{"전부", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true, WS: true}},
 	}
 	for _, x := range bots {
 		for seed := uint64(1); seed <= 5; seed++ {
