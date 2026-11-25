@@ -2,6 +2,7 @@ import { Cable, Clock, Database, DatabaseZap, HardDrive, Layers, ServerCog, Wayp
 import type { ReactNode } from 'react'
 import type { GameClient } from '../client'
 import type { Opened } from '../types'
+import { useFit } from './fit'
 
 // 보상으로 쌓은 개선 목록
 export function Boosts({ g }: { g: GameClient }) {
@@ -20,7 +21,7 @@ export function Boosts({ g }: { g: GameClient }) {
 
 // 성장 단계가 올라 새 기능이 열렸을 때의 안내
 export function News({ g, onClose }: { g: GameClient; onClose: () => void }) {
-  const n = g.news, c = g.config
+  const n = g.news, c = g.config, fit = useFit()
   if (!n) return null
   const about: Record<Opened, [ReactNode, string, string]> = {
     storage: [<HardDrive />, '저장 공간', `이제 DB가 요청을 처리할 때마다 데이터가 쌓입니다. 가득 차면 DB 속도가 ${c.storageSlow}%로 떨어집니다. DB를 눌러 저장 공간을 늘리거나 샤드를 추가해 나누세요.`],
@@ -29,7 +30,7 @@ export function News({ g, onClose }: { g: GameClient; onClose: () => void }) {
   }
   return (
     <div className="veil" role="dialog" aria-modal aria-label="새 기능">
-      <div className="modal news">
+      <div ref={fit} className="modal news">
         <h2>{n.rank} 단계로 성장했습니다</h2>
         <p className="muted">새 기능이 열렸습니다.</p>
         {n.opened.map((k) => <div key={k} className="item"><span aria-hidden>{about[k][0]}</span><p><b>{about[k][1]}</b>{about[k][2]}</p></div>)}

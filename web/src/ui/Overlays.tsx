@@ -6,6 +6,7 @@ import { LOCAL } from '../wire'
 import { Boosts } from './Growth'
 import { WhenToGrow } from './Lesson'
 import { Toggles } from './Toggles'
+import { useFit } from './fit'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
@@ -20,7 +21,7 @@ const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) 
 }
 
 export function RewardModal({ g }: { g: GameClient }) {
-  const r = g.head.reward
+  const r = g.head.reward, fit = useFit()
   const ref = useRef<HTMLButtonElement>(null)
   useEffect(() => { ref.current?.focus() }, [r?.phase])
   if (!r) return null
@@ -30,7 +31,7 @@ export function RewardModal({ g }: { g: GameClient }) {
   }
   return (
     <div className="veil" role="dialog" aria-modal aria-label="구간 보상">
-      <div className="modal">
+      <div ref={fit} className="modal">
         <h2>{r.phase}번째 구간을 버텼습니다</h2>
         <ul className="earned">
           <li><span>구간 수입</span><b>+{r.income}</b></li>
@@ -70,7 +71,7 @@ async function shareResult(r: Result): Promise<string> {
 }
 
 export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void }) {
-  const r = g.result
+  const r = g.result, fit = useFit()
   const [best, setBest] = useState<{ old: Best | null; isNew: boolean } | null>(null)
   const [note, setNote] = useState('')
   useEffect(() => {
@@ -86,7 +87,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
   const rate = r.completed + total ? (r.completed / (r.completed + total)) * 100 : 0
   return (
     <div className="veil" role="dialog" aria-modal aria-label="결과">
-      <div className="modal result">
+      <div ref={fit} className="modal result">
         <div className="half">
         <span className={`outcome ${r.over === 'done' ? 'good' : 'bad'}`}>{r.over === 'done' ? <Flag size={18} aria-hidden /> : <CircleX size={18} aria-hidden />}{r.over === 'done' ? '마라톤을 마쳤습니다' : '서비스가 멈췄습니다'}</span>
         <h2>{clockText(r.seconds)} 동안 달려 {r.rank}까지 키웠습니다</h2>
@@ -122,10 +123,10 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
 export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutorial, log, setLog, onHelp }: {
   g: GameClient; onSkip: () => void; onClose: () => void; onHome: () => void; onRestart: (seed?: number) => void; tutorial: boolean; setTutorial: (b: boolean) => void; log: boolean; setLog: (b: boolean) => void; onHelp: () => void
 }) {
-  const practice = g.config.practice
+  const practice = g.config.practice, fit = useFit()
   return (
     <div className="veil" role="dialog" aria-modal aria-label="설정" onClick={onClose}>
-      <div className="modal small" onClick={(e) => e.stopPropagation()}>
+      <div ref={fit} className="modal small" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="닫기"><X size={16} /></button>
         <h2>설정</h2>
         <Toggles />

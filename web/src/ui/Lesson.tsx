@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Hint } from '../board'
 import type { GameClient } from '../client'
 import { API, DB, SOURCE, nodeName, perSec, type GLink, type GNode } from '../types'
+import { useFit } from './fit'
 
 const LEARNED = 'serverway.learned'
 const MIN_READ = 3500 // 지켜보는 단계가 글을 읽기 전에 넘어가지 않게 하는 시간(ms)
@@ -191,9 +192,10 @@ export function LessonCard({ g, lesson, onSkip }: { g: GameClient; lesson: Lesso
 }
 
 export function LessonIntro({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
+  const fit = useFit()
   return (
     <div className="veil" role="dialog" aria-modal aria-label="튜토리얼 소개">
-      <div className="modal learn">
+      <div ref={fit} className="modal learn">
         <h2>이렇게 진행됩니다</h2>
         <ol className="flow">
           <li><b>연결</b>클라이언트, 서버, DB를 이으면 요청이 다녀옵니다.</li>
@@ -212,11 +214,11 @@ export function LessonIntro({ onNext, onSkip }: { onNext: () => void; onSkip: ()
 }
 
 export function LessonEnd({ onDone, onHome }: { onDone: () => void; onHome: () => void }) {
-  const go = useRef<HTMLButtonElement>(null)
+  const go = useRef<HTMLButtonElement>(null), fit = useFit()
   useEffect(() => go.current?.focus({ preventScroll: true }), [])
   return (
     <div className="veil" role="dialog" aria-modal aria-label="튜토리얼 완료">
-      <div className="modal help learn">
+      <div ref={fit} className="modal help learn">
         <h2>튜토리얼을 마쳤습니다</h2>
         <p className="muted">아래 표는 게임 중에도 설정의 게임 규칙에서 다시 볼 수 있습니다.</p>
         <WhenToGrow />

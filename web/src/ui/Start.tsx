@@ -3,17 +3,21 @@ import { useState } from 'react'
 import { clockText, loadBest } from '../types'
 import { learned } from './Lesson'
 import { Toggles } from './Toggles'
+import { useFit } from './fit'
 
 export function Start({ onStart, resume, busy, error }: { onStart: (seed?: number, practice?: boolean) => void; resume: (() => void) | null; busy: boolean; error: string }) {
   const [seed, setSeed] = useState('')
-  const best = loadBest()
+  const best = loadBest(), fit = useFit()
   return (
     <div className="start">
-      <div className="startcard">
+      <div ref={fit} className="startcard">
+        <div className="hero">
         <Mark />
         <h1>Serverway</h1>
         <p className="tag">트래픽 하나가 오가는 작은 서버에서 시작해<br />감당할 수 있을 때까지 끝없이 키워 보세요.</p>
         {best && <p className="best"><Trophy size={16} aria-hidden />최고 기록 {best.score.toLocaleString()}점, {clockText(best.seconds)}, {best.rank}</p>}
+        </div>
+        <div className="starts">
         <div className="row">
           {resume && <button className="big" onClick={resume}><RotateCw size={18} aria-hidden />이어서 하기</button>}
           <button className="big primary" disabled={busy} onClick={() => onStart(Number(seed) || undefined)}><Play size={18} aria-hidden />새 게임</button>
@@ -25,6 +29,7 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
           <input inputMode="numeric" maxLength={6} value={seed} placeholder="비우면 무작위" onChange={(e) => setSeed(e.target.value.replace(/\D/g, ''))} /></label>
         <p className="fine">시드는 보상이나 장애 같은 운을 정하는 번호입니다.<br />같은 번호를 쓰면 친구와 같은 운으로 시작합니다.</p>
         {error && <p className="err" role="alert">{error}</p>}
+        </div>
         <ul className="rules">
           <li><b>왕복</b>요청은 서버와 DB를 거친 뒤 응답으로 돌아와야 완료됩니다.</li>
           <li><b>체증</b>서버나 DB가 꽉 차면 트래픽이 링크 위에 밀려 뒤로 번집니다.</li>
