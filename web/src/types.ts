@@ -14,9 +14,10 @@ export interface GLink {
 }
 export interface Fault { id: number; type: 'api_slow' | 'api_down' | 'link_block'; state: string; node?: number; link?: number; startAt: number; endAt: number; percent: number; failedIn: number }
 export interface Gain { label: string; from: string; to: string }
-export interface Reward { phase: number; income: number; held: number; interest: number; mul: number; options: { id: string; amount: number; gains: Gain[] }[] }
+export interface Reward { phase: number; income: number; held: number; interest: number; mul: number; left: number; options: { id: string; amount: number; taken: boolean; gains: Gain[] }[] }
 export type Opened = 'storage' | 'redis' | 'ws'
-export interface Bonus { queue: number; deadline: number; linkRate: number; apiOpt: number; dbIndex: number; cache: number; storage: number }
+export type NewsItem = Opened | 'picks'
+export interface Bonus { queue: number; deadline: number; linkRate: number; apiOpt: number; dbIndex: number; cache: number; storage: number; revenue: number }
 export interface Area { x: number; y: number; w: number; h: number }
 export interface Head {
   tick: number; score: number; health: number; budget: number; paused: boolean; started: boolean; speed: number; over: string; phase: number; phaseAt: number; phaseEnd: number

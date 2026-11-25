@@ -480,7 +480,7 @@ func TestEndlessGrowth(t *testing.T) {
 			s.Take()
 			if s.Pending != nil {
 				seq++
-				s.Apply(Command{Seq: seq, Type: "reward"})
+				s.Apply(Command{Seq: seq, Type: "reward", Index: s.Pending.Next()})
 			}
 		}
 		rate := 0
@@ -645,10 +645,12 @@ func TestIncomeGrowsWithPhase(t *testing.T) {
 		for _, o := range p.Options {
 			g.WithReward(o, func() {})
 		}
-		if g.digest() != was || g.RevenueMul() != 100+g.Cfg.RevenueStep*phase {
+		if g.digest() != was || g.RevenueMul() != 100+g.Cfg.RevenueStep*phase+g.Bonus.Revenue {
 			t.Fatal("미리 보기나 처리 수익이 다름")
 		}
-		g.must(Command{Type: "reward"})
+		for g.Pending != nil {
+			g.must(Command{Type: "reward", Index: g.Pending.Next()})
+		}
 	}
 }
 
@@ -681,7 +683,7 @@ func TestCannotBlockSources(t *testing.T) {
 	do := func(cmd Command) bool { seq++; cmd.Seq = seq; return s.Apply(cmd).OK }
 	for s.Tick < 900*TPS {
 		if s.Pending != nil {
-			do(Command{Type: "reward"})
+			do(Command{Type: "reward", Index: s.Pending.Next()})
 		}
 		if s.Tick%(5*TPS) == 0 {
 			s.Budget = 1 << 20
@@ -708,5 +710,40 @@ func TestCannotBlockSources(t *testing.T) {
 	}
 	if want := len(c.Sources) + s.sourceN - len(s.Coming); born != want {
 		t.Fatalf("클라이언트 %d, 나와야 할 수 %d", born, want)
+	}
+}
+
+// 구간마다 선택지가 2, 3, 4, 5개로 늘고, 넷부터는 두 개를 고른다. 그 뒤로는 계속 다섯 중 둘이다.
+func TestRewardChoices(t *testing.T) {
+	g := setup(t, func(c *Config) { c.PhaseSeconds, c.Endless.IncomeStep, c.Unlock.Storage = 5, 15, 0 })
+	for phase := 1; phase <= 40; phase++ {
+		for g.Pending == nil {
+			g.Advance(1)
+			g.Health = g.Cfg.Health.Max
+		}
+		p, n, left := g.Pending, min(phase+1, 5), 1
+		if n >= 4 {
+			left = 2
+		}
+		ids := map[string]bool{}
+		for _, o := range p.Options {
+			ids[o.ID] = true
+		}
+		if len(p.Options) != n || len(ids) != n || p.Left != left {
+			t.Fatalf("구간 %d: 선택지 %d(서로 다른 것 %d) 고르는 수 %d", phase, len(p.Options), len(ids), p.Left)
+		}
+		for i := range left {
+			tick := g.Tick
+			if g.Advance(5) != 0 || g.Tick != tick {
+				t.Fatal("다 고를 때까지 멈춰 있어야 함")
+			}
+			g.must(Command{Type: "reward", Index: i})
+			if i+1 < left && g.cmd(Command{Type: "reward", Index: i}).OK {
+				t.Fatal("같은 보상을 두 번 고를 수 없어야 함")
+			}
+		}
+		if g.Pending != nil {
+			t.Fatal("다 골랐으면 이어져야 함")
+		}
 	}
 }

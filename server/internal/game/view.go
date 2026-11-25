@@ -97,12 +97,14 @@ type rewardView struct {
 	Held     int          `json:"held"`
 	Interest int          `json:"interest"`
 	Mul      int          `json:"mul"`
+	Left     int          `json:"left"` // 더 고를 수 있는 수
 	Options  []optionView `json:"options"`
 }
 
 type optionView struct {
 	ID     string `json:"id"`
 	Amount int    `json:"amount"`
+	Taken  bool   `json:"taken"`
 	Gains  []gain `json:"gains"`
 }
 
@@ -187,6 +189,7 @@ type bonusView struct {
 	DBIndex  int `json:"dbIndex"`
 	Cache    int `json:"cache"`
 	Storage  int `json:"storage"`
+	Revenue  int `json:"revenue"`
 }
 
 type result struct {
@@ -242,9 +245,9 @@ func makeReward(s *sim.Sim) *rewardView {
 	if r == nil {
 		return nil
 	}
-	v := &rewardView{Phase: r.Phase, Income: r.Income, Held: r.Held, Interest: r.Interest, Mul: s.RevenueMul()}
-	for _, o := range r.Options {
-		v.Options = append(v.Options, optionView{o.ID, o.Amount, gains(s, o)})
+	v := &rewardView{Phase: r.Phase, Income: r.Income, Held: r.Held, Interest: r.Interest, Mul: s.RevenueMul(), Left: r.Left}
+	for i, o := range r.Options {
+		v.Options = append(v.Options, optionView{o.ID, o.Amount, r.Taken[i], gains(s, o)})
 	}
 	return v
 }
@@ -270,7 +273,7 @@ func gains(s *sim.Sim, o sim.RewardDef) []gain {
 			}
 			return
 		}
-		per := func(t int) string { return fmt.Sprintf("초당 %d.%d", t/10, t%10) }
+		per := func(t int) string { return fmt.Sprintf("%d.%d", t/10, t%10) }
 		switch o.ID {
 		case "budget":
 			return []gain{{Label: "예산", To: fmt.Sprint(s.Budget)}}
@@ -283,13 +286,13 @@ func gains(s *sim.Sim, o sim.RewardDef) []gain {
 			for _, l := range s.Links {
 				t += s.LinkRate(l)
 			}
-			return []gain{{Label: "링크 전송 합계", To: fmt.Sprintf("초당 %d", t)}}
+			return []gain{{Label: "링크 초당 전송", To: fmt.Sprint(t)}}
 		case "health":
 			return []gain{{Label: "서비스 상태", To: fmt.Sprintf("%d%%", (s.Health*100+s.Cfg.Health.Max-1)/s.Cfg.Health.Max)}}
 		case "apiOpt":
-			return []gain{{Label: "서버 처리량 합계", To: per(rate(sim.API))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.API)).ProcMs)}}
+			return []gain{{Label: "서버 초당 처리", To: per(rate(sim.API))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.API)).ProcMs)}}
 		case "dbIndex":
-			return []gain{{Label: "DB 처리량 합계", To: per(rate(sim.DB))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.DB)).ProcMs)}}
+			return []gain{{Label: "DB 초당 처리", To: per(rate(sim.DB))}, {Label: "처리 시간", To: fmt.Sprintf("%dms", s.ServerLevel(top(sim.DB)).ProcMs)}}
 		case "cache":
 			return []gain{{Label: "DB로 가는 요청", To: fmt.Sprintf("%d%%", 100-s.Bonus.Cache)}}
 		case "storage":
@@ -299,7 +302,9 @@ func gains(s *sim.Sim, o sim.RewardDef) []gain {
 					t += s.StorageCap(n)
 				}
 			}
-			return []gain{{Label: "저장 공간 합계", To: fmt.Sprint(t)}}
+			return []gain{{Label: "저장 공간", To: fmt.Sprint(t)}}
+		case "revenue":
+			return []gain{{Label: "처리 수익", To: fmt.Sprintf("%.1f배", float64(s.RevenueMul())/100)}}
 		}
 		return nil
 	}

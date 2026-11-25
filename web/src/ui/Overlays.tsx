@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, Check, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, revenueText, type Best, type Result } from '../types'
@@ -17,33 +17,44 @@ const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) 
   health: { icon: <HeartPulse />, name: '핫픽스 배포', text: (n) => `서비스 상태를 ${n / 1000}% 회복합니다` },
   apiOpt: { icon: <Zap />, name: '코드 최적화', text: (n) => `모든 서버의 처리 시간이 ${n}% 줄어듭니다` },
   dbIndex: { icon: <Database />, name: 'DB 인덱스 추가', text: (n) => `DB의 처리 시간이 ${n}% 줄어듭니다` },
+  revenue: { icon: <Coins />, name: '요금제 개편', text: (n) => `처리 수익이 ${n}% 늘어납니다` },
   storage: { icon: <HardDrive />, name: '스토리지 확장', text: (n) => `모든 DB의 저장 공간이 ${n}% 늘어납니다` },
   cache: { icon: <ServerCog />, name: '응답 캐시', text: (n) => `요청의 ${n}%는 서버가 DB 없이 바로 응답합니다` },
 }
 
 export function RewardModal({ g }: { g: GameClient }) {
   const r = g.head.reward, fit = useFit()
+  const [picked, setPicked] = useState<number[]>([])
   const ref = useRef<HTMLButtonElement>(null)
-  useEffect(() => { ref.current?.focus() }, [r?.phase])
+  useEffect(() => { setPicked([]); ref.current?.focus() }, [r?.phase])
   if (!r) return null
+  const many = r.left > 1 || r.options.some((o) => o.taken)
+  // 하나만 고르는 구간은 바로 받고, 두 개를 고르는 구간은 골라 둔 뒤 한 번에 받는다.
+  const tap = (i: number) => {
+    if (!many) g.send('reward', { index: i })
+    else setPicked((p) => (p.includes(i) ? p.filter((k) => k !== i) : p.length < r.left ? [...p, i] : p))
+  }
+  const take = () => picked.forEach((i) => g.send('reward', { index: i }))
   return (
     <div className="veil" role="dialog" aria-modal aria-label="구간 보상">
-      <div ref={fit} className="modal">
+      <div ref={fit} className="modal reward" data-n={r.options.length}>
         <h2>{r.phase}번째 구간을 버텼습니다</h2>
         <ul className="earned">
           <li><span>구간 수입</span><b>+{r.income}</b></li>
           <li><span>보유 예산 보너스 ({r.held}의 {g.head.interestPercent}%{r.interest === r.income && ', 최대'})</span><b>+{r.interest}</b></li>
           <li><span>처리 수익</span><b>{(r.mul / 100).toFixed(1)}배</b></li>
         </ul>
-        <p className="muted">{g.grew && '판도 넓어집니다. '}개선 작업을 하나 고르세요. 고르는 동안 시간은 멈춥니다.</p>
+        <p className="muted">{g.grew && '판도 넓어집니다. '}{many ? `${r.options.length}개 중 ${r.left}개를 고르세요.` : `${r.options.length}개 중 하나를 고르세요.`} 고르는 동안 시간은 멈춥니다.</p>
         <div className="cards">
           {r.options.map((o, i) => (
-            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" onClick={() => g.send('reward', { index: i })}>
-              <span className="ic">{REWARD[o.id]?.icon}</span><b>{REWARD[o.id]?.name ?? o.id}</b><span>{REWARD[o.id]?.text(o.amount)}</span>
-              {o.gains.map((v) => <span key={v.label} className="delta"><small>{v.label}</small><span>{v.from}<ArrowRight size={14} aria-hidden /><b>{v.to}</b></span></span>)}
+            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" disabled={o.taken || (many && picked.length >= r.left && !picked.includes(i))} aria-pressed={many ? o.taken || picked.includes(i) : undefined} onClick={() => tap(i)}>
+              <span className="ic">{REWARD[o.id]?.icon}</span><b>{REWARD[o.id]?.name ?? o.id}</b><span className="what">{REWARD[o.id]?.text(o.amount)}</span>
+              <span className="deltas">{o.gains.map((v) => <span key={v.label} className="delta"><small>{v.label}</small><span>{v.from}<ArrowRight size={14} aria-hidden /><b>{v.to}</b></span></span>)}</span>
+              {many && <span className="pick" aria-hidden><Check size={15} strokeWidth={3} /></span>}
             </button>
           ))}
         </div>
+        {many && <button className="big primary" disabled={picked.length < r.left} onClick={take}>{picked.length < r.left ? `${r.left - picked.length}개 더 고르세요` : '선택한 보상 받기'}</button>}
         <Boosts g={g} />
       </div>
     </div>
@@ -162,6 +173,7 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
           <li><b>마라톤:</b> 끝나는 시간이 없습니다. 클라이언트와 트래픽, 보드가 계속 늘어나며 서비스 상태가 0이 되면 끝납니다. 8분부터는 전체 트래픽이 점점 더 빠르게 늘어납니다.</li>
           <li><b>판:</b> 구간을 넘길 때마다 판이 넓어져 서버와 DB를 더 지을 수 있습니다.</li>
           <li><b>예산:</b> 구간마다 들어오고 구간이 오를수록 많아집니다. 구간을 넘길 때 가진 예산의 {g.head.interestPercent}%를 보너스로 받습니다(그 구간 수입까지). 요청을 완료해도 벌리며 지금은 {revenueText(g.head)}입니다. 서버와 DB가 늘면 운영비 때문에 더 완료해야 하지만, 구간이 오를수록 수익이 커집니다.</li>
+          <li><b>구간 보상:</b> 선택지는 구간마다 2, 3, 4, 5개로 늘고 그 뒤로는 계속 5개입니다. 4개부터는 2개를 고릅니다.</li>
           <li><b>저장 공간:</b> 성장 서비스부터 DB가 처리할 때마다 데이터가 쌓입니다. 가득 차면 속도가 {c.storageSlow}%로 떨어집니다. 저장 공간을 늘리거나 샤드를 추가해 나눕니다.</li>
           <li><b>Redis:</b> 국민 서비스부터 지을 수 있습니다. 서버에서 이으면 요청의 일부를 DB 대신 응답합니다. DB로 가는 링크도 있어야 합니다.</li>
           <li><b>WebSocket:</b> 국민 서비스부터 클라이언트와 서버 사이 링크를 전환할 수 있습니다. {c.wsSpeed / 100}배 빠르고 {c.wsRate / 100}배 많이 보내며 처리 수익이 {c.wsRevenue / 100}배입니다.</li>

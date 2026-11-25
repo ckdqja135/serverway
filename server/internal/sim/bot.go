@@ -35,10 +35,13 @@ func nearest(list []*Node, x, y int) []*Node {
 
 // Act는 게임 시간 1초마다 부른다.
 func (b *Bot) Act(s *Sim) {
-	if s.Pending != nil {
-		best, at := 99, 0
+	for s.Pending != nil {
+		best, at := 99, s.Pending.Next()
 		for i, o := range s.Pending.Options {
-			for rank, id := range []string{"dbIndex", "apiOpt", "cache", "linkRate", "budget", "health", "storage", "queue", "deadline"} {
+			if s.Pending.Taken[i] {
+				continue
+			}
+			for rank, id := range []string{"dbIndex", "apiOpt", "cache", "linkRate", "revenue", "budget", "health", "storage", "queue", "deadline"} {
 				if o.ID == id && rank < best {
 					best, at = rank, i
 				}

@@ -1,4 +1,4 @@
-import { FAIL, nodeName, perSec, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Opened, type Result } from './types'
+import { FAIL, nodeName, perSec, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type NewsItem, type Opened, type Result } from './types'
 import { sfx, type Sfx } from './sound'
 import { command, odd, strangeCommand, watchGame, watchReset } from './watch'
 import { LOCAL, host, type Wire } from './wire'
@@ -48,7 +48,7 @@ export class GameClient {
   version = 0
   resets = 0
   ready = false
-  news: { rank: string; opened: Opened[] } | null = null // 성장하면서 새로 열린 기능
+  news: { title: string; items: NewsItem[] } | null = null // 새로 열린 기능의 안내
   grew = false // 이번 구간에서 판이 넓어졌는지
   flip = false // 세로 화면에서는 x와 y를 바꿔 보여 준다
   dotPos: (d: Dot) => { x: number; y: number } | null = () => null
@@ -144,7 +144,10 @@ export class GameClient {
     else if (m.type === 'ack') { if (LOCAL && !this.waits.has(m.ack.seq)) strangeCommand(); this.waits.get(m.ack.seq)?.(m.ack); this.waits.delete(m.ack.seq) }
     else if (m.type === 'frame') {
       if (m.head.phase > this.head.phase) this.grew = m.head.area.w * m.head.area.h > this.head.area.w * this.head.area.h
-      if (m.head.reward && !this.head.reward) sfx('reward')
+      if (m.head.reward && !this.head.reward) {
+        sfx('reward')
+        if (m.head.reward.phase === 3 && m.head.reward.left === 2) this.announce('이제 보상을 2개 고를 수 있습니다', ['picks'])
+      }
       if (m.head.over && !this.head.over) { this.odd = odd(); sfx(m.head.over === 'done' ? 'finish' : 'over') }
       if (m.head.rank > this.head.rank) this.rankUp(this.head, m.head)
       this.head = m.head
@@ -193,10 +196,13 @@ export class GameClient {
   // 능력치가 오른 자리에 얼마나 올랐는지 띄운다.
   private gain(x: number, y: number, text: string, at: number) { if (text) this.addFx({ kind: 'gain', x, y, at, text }) }
 
+  // 안내가 겹치면 한 창에 모아 보여 준다.
+  private announce(title: string, items: NewsItem[]) { this.news = { title: this.news?.title ?? title, items: [...(this.news?.items ?? []), ...items] } }
+
   private rankUp(old: Head, now: Head) {
     const opened = (Object.keys(now.open) as Opened[]).filter((k) => now.open[k] && !old.open[k])
     sfx('finish')
-    if (opened.length) this.news = { rank: now.rankName, opened }
+    if (opened.length) this.announce(`${now.rankName} 단계로 성장했습니다`, opened)
     else this.say(`${now.rankName} 단계로 성장했습니다`)
   }
 

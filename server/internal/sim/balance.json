@@ -72,7 +72,7 @@
   ],
   "endless": {
     "sourceFromSec": 350, "sourceEverySec": 55, "sourceMinEverySec": 32, "sourceNoticeSec": 15,
-    "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 200, "surgeFromMin": 8, "surgePerMin": 10,
+    "rateStart": 600, "ratePerMin": 800, "rampMin": 3, "growthPerMin": 300, "surgeFromMin": 8, "surgePerMin": 20,
     "faultFromSec": 400, "faultEverySec": 70, "faultMinEverySec": 40,
     "expandW": 5, "expandH": 3, "maxW": 60, "maxH": 32,
     "incomeStep": 15, "phaseStepSec": 5, "phaseMaxSec": 75
@@ -94,6 +94,7 @@
     { "id": "apiOpt", "amount": 15 },
     { "id": "dbIndex", "amount": 15 },
     { "id": "cache", "amount": 15 },
-    { "id": "storage", "amount": 30 }
+    { "id": "storage", "amount": 30 },
+    { "id": "revenue", "amount": 10 }
   ]
 }

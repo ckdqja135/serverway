@@ -158,7 +158,12 @@ type Reward struct {
 	Held     int // 구간을 넘길 때 가지고 있던 예산
 	Interest int
 	Options  []RewardDef
+	Taken    []bool // 이미 고른 것
+	Left     int    // 더 고를 수 있는 수
 }
+
+// Next는 아직 고르지 않은 첫 보상이다.
+func (r *Reward) Next() int { return slices.Index(r.Taken, false) }
 
 // Event는 화면 표시용이다. 게임 계산에는 쓰지 않는다.
 type Event struct {
@@ -201,7 +206,7 @@ type Sim struct {
 	Failures  [failKinds]int
 	Active    int
 	PeakWait  int
-	Bonus     struct{ Queue, Deadline, LinkRate, APIOpt, DBIndex, Cache, Storage int }
+	Bonus     struct{ Queue, Deadline, LinkRate, APIOpt, DBIndex, Cache, Storage, Revenue int }
 	Events    []Event
 	Log       []LogEntry
 	Spent     int
@@ -347,8 +352,8 @@ func (s *Sim) RevenueNeed() int {
 	return s.Cfg.RevenueEvery + s.count(API) + s.count(DB) + s.count(Cache)
 }
 
-// RevenueMul은 구간을 넘길수록 늘어나는 처리 수익(퍼센트)이다.
-func (s *Sim) RevenueMul() int { return 100 + s.Cfg.RevenueStep*s.Phase }
+// RevenueMul은 구간을 넘길수록, 보상을 받을수록 늘어나는 처리 수익(퍼센트)이다.
+func (s *Sim) RevenueMul() int { return 100 + s.Cfg.RevenueStep*s.Phase + s.Bonus.Revenue }
 
 func (s *Sim) count(k Kind) int {
 	c := 0
@@ -1342,15 +1347,22 @@ func (s *Sim) stepEnd() {
 	var pool []RewardDef
 	for _, r := range s.Cfg.Rewards {
 		if (r.ID == "cache" && s.Bonus.Cache >= 60) || (r.ID == "apiOpt" && s.Bonus.APIOpt >= 60) || (r.ID == "dbIndex" && s.Bonus.DBIndex >= 60) ||
-			(r.ID == "deadline" && s.Bonus.Deadline >= 16) || (r.ID == "health" && s.Health >= s.Cfg.Health.Max) || (r.ID == "linkRate" && s.Bonus.LinkRate >= 200) || (r.ID == "storage" && !s.Unlocked(s.Cfg.Unlock.Storage)) {
+			(r.ID == "deadline" && s.Bonus.Deadline >= 16) || (r.ID == "health" && s.Health >= s.Cfg.Health.Max) || (r.ID == "storage" && !s.Unlocked(s.Cfg.Unlock.Storage)) {
 			continue
 		}
 		r.Amount, r.Step = r.Amount+r.Step*s.Phase/10, 0
 		pool = append(pool, r)
 	}
-	a := s.rand(len(pool))
-	b := (a + 1 + s.rand(len(pool)-1)) % len(pool)
-	s.Pending = &Reward{Phase: s.Phase, Income: income, Held: held, Interest: interest, Options: []RewardDef{pool[a], pool[b]}}
+	// 구간이 오를수록 선택지가 둘에서 다섯까지 늘고, 넷부터는 두 개를 고른다.
+	n, left := min(s.Phase+1, 5, len(pool)), 1
+	for i := range n {
+		j := i + s.rand(len(pool)-i)
+		pool[i], pool[j] = pool[j], pool[i]
+	}
+	if n >= 4 {
+		left = 2
+	}
+	s.Pending = &Reward{Phase: s.Phase, Income: income, Held: held, Interest: interest, Options: pool[:n], Taken: make([]bool, n), Left: left}
 }
 
 // Routed는 클라이언트에서 완료까지 이어지는 길이 있는지 구조만 보고 답한다.

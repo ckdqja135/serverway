@@ -324,11 +324,15 @@ func (s *Sim) removeNode(id int) error {
 }
 
 func (s *Sim) reward(i int) error {
-	if s.Pending == nil || i < 0 || i >= len(s.Pending.Options) {
+	p := s.Pending
+	if p == nil || i < 0 || i >= len(p.Options) || p.Taken[i] {
 		return fmt.Errorf("선택할 보상이 없습니다")
 	}
-	s.grant(s.Pending.Options[i])
-	s.Pending = nil
+	s.grant(p.Options[i])
+	p.Taken[i] = true
+	if p.Left--; p.Left == 0 {
+		s.Pending = nil
+	}
 	return nil
 }
 
@@ -360,6 +364,8 @@ func (s *Sim) grant(o RewardDef) {
 		s.Health = min(s.Cfg.Health.Max, s.Health+o.Amount)
 	case "storage":
 		s.Bonus.Storage += o.Amount
+	case "revenue":
+		s.Bonus.Revenue += o.Amount
 	}
 }
 
