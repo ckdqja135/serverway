@@ -93,6 +93,11 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
     return () => document.removeEventListener('visibilitychange', hide)
   }, [g])
 
+  const cost = (t: Tool) => (t === 'api' ? g.head.apiCost : t === 'db' ? g.head.dbCost : t === 'redis' ? g.head.redisCost : 0)
+  const build = (t: Tool) => { if (g.head.budget >= cost(t)) setTool(t); else g.say(`예산이 부족합니다 (필요 ${cost(t)}, 보유 ${g.head.budget})`, true) }
+  // 짓기를 고른 뒤 예산을 다른 데 쓰면 선택으로 돌아간다.
+  const broke = !!h && h.budget < cost(tool)
+  useEffect(() => { if (broke) setTool('connect') }, [broke])
   const closeNews = () => { g.news = null; g.send('pause', { on: false }) }
 
   useEffect(() => {
@@ -112,9 +117,9 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
       if (e.key === ' ') { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); g.send('pause', { on: !g.head.paused }) }
       else if (e.key === 's' || e.key === 'S') g.send('speed', { speed: (g.head.speed % 3) + 1 })
       else if (e.key === '1') setTool('connect')
-      else if (e.key === '2') setTool('api')
-      else if (e.key === '3') setTool('db')
-      else if (e.key === '4' && g.head.open.redis) setTool('redis')
+      else if (e.key === '2') build('api')
+      else if (e.key === '3') build('db')
+      else if (e.key === '4' && g.head.open.redis) build('redis')
       else if ((e.key === 'u' || e.key === 'U') && sel) g.send(sel.type === 'node' ? 'upgradeNode' : 'upgradeLink', { id: sel.id })
       else if ((e.key === 'Delete' || e.key === 'Backspace') && sel) setConfirm(true)
     }
@@ -131,6 +136,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
 
   const focusFault = (f: Fault) => select(f.node ? { type: 'node', id: f.node } : f.link ? { type: 'link', id: f.link } : null)
   const restart = (seed?: number) => { setMenu(false); g.restart(seed) }
+  const price = (c: number) => (h!.budget < c ? `${c - h!.budget} 부족` : `비용 ${c}`)
   const count = (k: number) => [...g.nodes.values()].filter((n) => n.kind === k).length
 
   return (
@@ -141,9 +147,9 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
         <Panel g={g} sel={sel} onClose={() => select(null)} confirm={confirm} setConfirm={setConfirm} />
         <div className="dock" role="toolbar" aria-label="건설 도구">
           <button aria-pressed={tool === 'connect'} onClick={() => setTool('connect')}><MousePointer2 size={20} aria-hidden /><span><b>선택 / 연결</b>드래그로 링크</span><kbd>1</kbd></button>
-          <button aria-pressed={tool === 'api'} className={h.budget < h.apiCost ? 'poor' : ''} onClick={() => setTool('api')}><Hexagon size={20} aria-hidden /><span><b>서버 추가</b>비용 {h.apiCost}, {count(API)}대</span><kbd>2</kbd></button>
-          <button aria-pressed={tool === 'db'} className={h.budget < h.dbCost ? 'poor' : ''} onClick={() => setTool('db')}><Database size={20} aria-hidden /><span><b>DB 샤드 추가</b>비용 {h.dbCost}, {count(DB)}대</span><kbd>3</kbd></button>
-          {h.open.redis && <button aria-pressed={tool === 'redis'} className={h.budget < h.redisCost ? 'poor' : ''} onClick={() => setTool('redis')}><DatabaseZap size={20} aria-hidden /><span><b>Redis 추가</b>비용 {h.redisCost}, {count(CACHE)}대</span><kbd>4</kbd></button>}
+          <button aria-pressed={tool === 'api'} disabled={h.budget < h.apiCost} onClick={() => setTool('api')}><Hexagon size={20} aria-hidden /><span><b>서버 추가</b>{price(h.apiCost)}, {count(API)}대</span><kbd>2</kbd></button>
+          <button aria-pressed={tool === 'db'} disabled={h.budget < h.dbCost} onClick={() => setTool('db')}><Database size={20} aria-hidden /><span><b>DB 샤드 추가</b>{price(h.dbCost)}, {count(DB)}대</span><kbd>3</kbd></button>
+          {h.open.redis && <button aria-pressed={tool === 'redis'} disabled={h.budget < h.redisCost} onClick={() => setTool('redis')}><DatabaseZap size={20} aria-hidden /><span><b>Redis 추가</b>{price(h.redisCost)}, {count(CACHE)}대</span><kbd>4</kbd></button>}
         </div>
         {!h.reward && <Boosts g={g} />}
         {zoomed && <button className="fit" onClick={() => board.current?.resetView()}><Maximize2 size={16} aria-hidden />전체 보기</button>}
