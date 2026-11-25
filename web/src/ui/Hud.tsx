@@ -13,7 +13,7 @@ export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void;
     <>
       {!c.practice && <div className="rail" role="progressbar" aria-label={`다음 보상까지 ${left}초`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(prog * 100)}><i style={{ width: `${prog * 100}%` }} /></div>}
       <div className="hud">
-        <div className="word">{c.practice ? '튜토리얼' : h.rankName}<small>{c.practice ? '연습 중' : <>{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}</>}</small></div>
+        <div className="word">{c.practice ? '튜토리얼' : h.rankName}<small>{c.practice ? '연습 중' : <>{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}{g.chosen && ' (연습)'}</>}</small></div>
         <div className="stats">
           <Stat icon={<Star size={17} />} id="points" label="점수" value={h.score.toLocaleString()} />
           <div className={`stat health ${tone}`}>

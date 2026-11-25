@@ -50,8 +50,8 @@ export function RewardModal({ g }: { g: GameClient }) {
 }
 
 // 폰에서는 공유 창을 열고, 그 밖에서는 복사한다. 앱 안의 브라우저는 공유와 클립보드를 막기도 해서 예전 복사 방식까지 쓴다.
-async function shareResult(r: Result): Promise<string> {
-  const text = `[Serverway] ${r.score.toLocaleString()}점\n${clockText(r.seconds)} 동안 버텨 ${r.rank}까지 키웠습니다!\n당신의 관리능력을 테스트해보세요!\n${import.meta.env.VITE_SITE_URL}`
+async function shareResult(r: Result, g: GameClient): Promise<string> {
+  const text = `[Serverway] ${r.score.toLocaleString()}점${g.odd ? ' (AI 등의 화면 어뷰징 의심)' : g.chosen ? ` (시드 ${r.seed} 연습)` : ''}\n${clockText(r.seconds)} 동안 버텨 ${r.rank}까지 키웠습니다!\n당신의 관리능력을 테스트해보세요!\n${import.meta.env.VITE_SITE_URL}`
   const copied = '기록을 복사했습니다. 카톡이나 메신저에 붙여 넣으세요.'
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
     try { await navigator.share({ text }); return '' } catch (e) { if ((e as Error).name === 'AbortError') return '' }
@@ -74,7 +74,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
     setNote('')
     if (!r) return setBest(null)
     const old = loadBest()
-    const isNew = r.score > (old?.score ?? 0)
+    const isNew = !g.chosen && !g.odd && r.score > (old?.score ?? 0)
     if (isNew) localStorage.setItem('serverway.best', JSON.stringify({ score: r.score, seconds: r.seconds, rank: r.rank }))
     setBest({ old, isNew })
   }, [r?.seed, r?.score, r?.over])
@@ -89,6 +89,8 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
         <h2>{clockText(r.seconds)} 동안 달려 {r.rank}까지 키웠습니다</h2>
         <div className="score">{r.score.toLocaleString()}<small>점</small></div>
         {best && (best.isNew ? <p className="newbest"><Trophy size={17} aria-hidden />최고 기록입니다{best.old ? ` (이전 ${best.old.score.toLocaleString()}점)` : ''}</p> : best.old && <p className="muted">최고 기록 {best.old.score.toLocaleString()}점, {clockText(best.old.seconds)}</p>)}
+        {g.odd && <p className="muted">AI 등의 화면 어뷰징이 의심되어 최고 기록에는 남지 않습니다.</p>}
+        {g.chosen && !g.odd && <p className="muted">시드를 정해 시작한 연습 기록이라 최고 기록에는 남지 않습니다.</p>}
         <div className="nums">
           <div><span>완료</span><b>{r.completed.toLocaleString()}</b></div><div><span>성공률</span><b>{rate.toFixed(1)}%</b></div>
           <div><span>최고 처리량</span><b>{(r.peakRps / 10).toFixed(1)}/s</b></div><div><span>클라이언트</span><b>{r.sources}개</b></div>
@@ -106,11 +108,11 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
         <div className="row">
           <button onClick={onHome}><House size={16} aria-hidden />처음으로</button>
           <button onClick={() => onRestart(r.seed)}><RotateCcw size={16} aria-hidden />같은 시드 {r.seed}</button>
-          <button onClick={async () => setNote(await shareResult(r))}><Share2 size={16} aria-hidden />기록 공유</button>
+          <button onClick={async () => setNote(await shareResult(r, g))}><Share2 size={16} aria-hidden />기록 공유</button>
           <button className="primary" onClick={() => onRestart()}><Shuffle size={16} aria-hidden />새 시드로 다시</button>
         </div>
         {note && <p role="status">{note}</p>}
-        <p className="fine">시드는 운을 정하는 번호입니다.<span> 같은 시드는 이번 판과 같은 운으로, 새 시드는 새로운 운으로 시작합니다.</span></p>
+        <p className="fine">시드는 운을 정하는 번호입니다.<span> 같은 시드는 이번 판과 같은 운의 연습, 새 시드는 새로운 운의 기록 도전입니다.</span></p>
       </div>
     </div>
   )
@@ -132,7 +134,7 @@ export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutor
         {practice ? <button onClick={onSkip}><SkipForward size={16} aria-hidden />튜토리얼 건너뛰고 본 게임 시작</button> : <>
         <button onClick={() => { onClose(); g.send('finish') }}><Flag size={16} aria-hidden />여기서 마치고 기록 남기기</button>
         <button onClick={() => onRestart(g.seed)}><RotateCcw size={16} aria-hidden />같은 시드로 처음부터</button>
-        <p className="fine">시드({g.seed})는 이 판의 운을 정하는 번호입니다. 지금 판을 버리고 같은 운으로 다시 시작합니다.</p>
+        <p className="fine">시드({g.seed})는 이 판의 운을 정하는 번호입니다. 지금 판을 버리고 같은 운으로 다시 연습합니다. 최고 기록에는 남지 않습니다.</p>
         </>}
         <button onClick={onHome}><House size={16} aria-hidden />{practice ? '나가기' : LOCAL ? '나가기 (이어서 할 수 있음)' : '나가기 (게임은 30분 동안 보관)'}</button>
         <button className="primary" autoFocus onClick={onClose}><Play size={16} aria-hidden />돌아가기</button>
@@ -163,7 +165,7 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
           <li><b>처리 용량:</b> 서버와 DB 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
           <li><b>링크 용량:</b> 한 차선이 초당 보낼 수 있는 수입니다. 가는 차선과 돌아오는 차선은 따로입니다.</li>
           <li><b>실패:</b> 502 경로 없음, 503 클라이언트 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다. {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
-          <li><b>시드:</b> 보상 후보, 장애, 나중에 생기는 클라이언트 위치 같은 운을 정하는 번호입니다. 같은 시드에 같은 플레이면 똑같이 진행되고, 다르게 플레이하면 뒤로 갈수록 달라집니다. 하던 판을 계속하는 이어서 하기와는 다릅니다.</li>
+          <li><b>시드:</b> 보상 후보, 장애, 나중에 생기는 클라이언트 위치 같은 운을 정하는 번호입니다. 같은 시드에 같은 플레이면 똑같이 진행되고, 다르게 플레이하면 뒤로 갈수록 달라집니다. 하던 판을 계속하는 이어서 하기와는 다릅니다. 번호를 직접 넣거나 같은 시드로 다시 시작한 판은 연습이라 최고 기록에 남지 않습니다.</li>
           <li><b>철거:</b> 새 요청만 막고 이미 나간 요청이 돌아온 뒤 사라집니다. 비용의 {c.refundPercent}%를 돌려받습니다.</li>
           <li><b>장애:</b> 시작 전에 예고합니다. 대상은 많이 쓰는 서버나 링크입니다.</li>
           <li>선이 교차해도 이어지지 않습니다. 실제 네트워크를 단순하게 만든 게임 규칙이며 재시도, 로드밸런서, 데이터 일관성은 다루지 않습니다.</li>

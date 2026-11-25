@@ -11,10 +11,11 @@ const maxSaveTick = 24 * 3600 * sim.TPS
 
 // Save는 판을 다시 계산해 이어 하는 데 필요한 기록이다.
 type Save struct {
-	Seed  uint64         `json:"seed"`
-	Tick  int            `json:"tick"`
-	Score int            `json:"score"`
-	Log   []sim.LogEntry `json:"log"`
+	Seed   uint64         `json:"seed"`
+	Chosen bool           `json:"chosen,omitempty"`
+	Tick   int            `json:"tick"`
+	Score  int            `json:"score"`
+	Log    []sim.LogEntry `json:"log"`
 }
 
 // Local은 통신 없이 세션 하나를 돌린다. 브라우저 안에서 쓴다.
@@ -34,7 +35,7 @@ func OpenLocal(ctx context.Context, cfg *sim.Config, seed uint64, save *Save) (*
 		if s.sim.Tick != save.Tick || s.sim.Score != save.Score {
 			return nil, fmt.Errorf("저장된 기록을 이어 할 수 없습니다")
 		}
-		s.sim.Paused, s.sim.Started = true, true
+		s.sim.Paused, s.sim.Started, s.chosen = true, true, save.Chosen
 	}
 	l := &Local{s, NewClient()}
 	go s.run(ctx, func() {})

@@ -35,6 +35,8 @@ h1, h2, h3, p, dl, dd, ul { margin: 0; padding: 0; } ul { list-style: none; }
 .stats { display: flex; background: var(--glass); border-radius: 18px; box-shadow: var(--shadow); padding: 4px; }
 .stat { display: flex; gap: 9px; align-items: center; padding: 7px 13px; color: var(--periD); border-right: 1.5px solid var(--soft); } .stat:last-child { border: 0; }
 .stat div { display: grid; line-height: 1.2; } .stat span { font-size: 11.5px; color: var(--sub); white-space: nowrap; } .stat strong { font: 600 14px var(--num); color: var(--ink); white-space: nowrap; } .stat.bad strong { color: var(--red); }
+/* 사람에게는 보이지 않는 함정 */
+.aside { position: absolute; left: -9999px; top: 0; width: 200px; opacity: 0; }
 /* 지금 가진 돈 */
 .stat.budget { border: 2px solid var(--gold); border-radius: 14px; background: var(--goldB); color: var(--goldT); margin: -2px 3px; } .stat.budget strong { color: var(--goldT); } .stat:has(+ .budget) { border-right-color: transparent; }
 .health .bar { width: 110px; margin-top: 4px; } .health.good { color: var(--mint); } .health.good .bar i { background: #2fb79a; } .health.warn { color: var(--amber); } .health.warn .bar i { background: #e39a00; } .health.bad { color: var(--red); } .health.bad .bar i { background: #e0404a; }

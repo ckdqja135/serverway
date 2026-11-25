@@ -1,6 +1,7 @@
 import { FAIL, nodeName, perSec, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type Opened, type Result } from './types'
 import { sfx, type Sfx } from './sound'
-import { host, type Wire } from './wire'
+import { command, odd, strangeCommand, watchGame, watchReset } from './watch'
+import { LOCAL, host, type Wire } from './wire'
 
 export interface Dot { id: number; link: number; lane: 0 | 1; dep: number; arr: number; stage: number; strand: number; p: number }
 export interface Fx { kind: 'done' | 'fail' | 'cache' | 'spawn' | 'up' | 'gain'; x: number; y: number; at: number; text?: string }
@@ -32,6 +33,8 @@ export class GameClient {
   status: Status = 'connecting'
   epoch = 0
   seed = 0
+  odd = false // 사람이 한 것으로 보기 어려운 판
+  chosen = false // 시드를 직접 고른 판. 연습 기록이다
   config!: Config
   head!: Head
   nodes = new Map<number, GNode>()
@@ -62,7 +65,7 @@ export class GameClient {
   private noticeId = 0
   private logId = 0
 
-  constructor(readonly id: string) { this.open() }
+  constructor(readonly id: string) { watchGame(id); this.open() }
 
   static async create(seed?: number, practice = false): Promise<string> {
     return host.create(seed ?? 0, practice)
@@ -96,6 +99,7 @@ export class GameClient {
       return Promise.resolve({ seq: 0, ok: false, tick: 0 })
     }
     if (type === 'speed') this.head = { ...this.head, speed: Number(body.speed) } // 빠르게 눌러도 이어지도록 표시만 먼저 바꾼다
+    if (DID[type]) command()
     const seq = ++this.seq
     this.wire.send(JSON.stringify({ epoch: this.epoch, seq, type, ...body }))
     return new Promise((res) => this.waits.set(seq, (a) => { if (a.ok && DID[type]) sfx(DID[type]); if (!a.ok && a.error) this.say(a.error, true); res(a) }))
@@ -126,7 +130,8 @@ export class GameClient {
     }
     if (m.type === 'snapshot') {
       const fresh = m.epoch !== this.epoch
-      this.epoch = m.epoch; this.seed = m.seed; this.seq = m.lastSeq; this.config = m.config; this.head = m.head; this.result = m.result
+      if (fresh && this.epoch) watchReset()
+      this.epoch = m.epoch; this.seed = m.seed; this.chosen = m.chosen; this.seq = m.lastSeq; this.config = m.config; this.head = m.head; this.result = m.result
       this.nodes = new Map((m.nodes ?? []).map((n: GNode) => [n.id, n]))
       this.links = new Map((m.links ?? []).map((l: GLink) => [l.id, l]))
       this.lanes.clear(); this.where.clear(); this.strands.clear(); this.queue = []; this.waits.clear()
@@ -136,11 +141,11 @@ export class GameClient {
       this.status = 'open'
       this.ready = true
     } else if (m.epoch !== this.epoch) return
-    else if (m.type === 'ack') { this.waits.get(m.ack.seq)?.(m.ack); this.waits.delete(m.ack.seq) }
+    else if (m.type === 'ack') { if (LOCAL && !this.waits.has(m.ack.seq)) strangeCommand(); this.waits.get(m.ack.seq)?.(m.ack); this.waits.delete(m.ack.seq) }
     else if (m.type === 'frame') {
       if (m.head.phase > this.head.phase) this.grew = m.head.area.w * m.head.area.h > this.head.area.w * this.head.area.h
       if (m.head.reward && !this.head.reward) sfx('reward')
-      if (m.head.over && !this.head.over) sfx(m.head.over === 'done' ? 'finish' : 'over')
+      if (m.head.over && !this.head.over) { this.odd = odd(); sfx(m.head.over === 'done' ? 'finish' : 'over') }
       if (m.head.rank > this.head.rank) this.rankUp(this.head, m.head)
       this.head = m.head
       const now = performance.now()

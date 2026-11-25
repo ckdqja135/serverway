@@ -7,7 +7,9 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { guard } from './guard'
 import { startSound } from './sound'
+import { startWatch } from './watch'
 
 if (import.meta.env.PROD) guard() // 개발 서버에서는 막지 않는다
 startSound()
+startWatch()
 createRoot(document.getElementById('root')!).render(<App />)

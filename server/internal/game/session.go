@@ -39,6 +39,7 @@ type Session struct {
 	sim    *sim.Sim
 	epoch  int
 	why    string
+	chosen bool // 시드를 직접 고른 판. 외운 판일 수 있어 최고 기록에서 뺀다
 	client *Client
 	delta  *delta
 	dirty  bool
@@ -79,10 +80,11 @@ func randomSeed() uint64 {
 func newSession(cfg *sim.Config, seed uint64) *Session {
 	var b [16]byte
 	rand.Read(b[:])
-	if seed == 0 {
+	chosen := seed != 0
+	if !chosen {
 		seed = randomSeed()
 	}
-	return &Session{ID: hex.EncodeToString(b[:]), cfg: cfg, sim: sim.New(cfg, seed), epoch: 1, delta: newDelta(), seen: time.Now(),
+	return &Session{ID: hex.EncodeToString(b[:]), cfg: cfg, sim: sim.New(cfg, seed), epoch: 1, chosen: chosen, delta: newDelta(), seen: time.Now(),
 		join: make(chan *Client), leave: make(chan *Client), cmds: make(chan inbound, 32), calls: make(chan func())}
 }
 
@@ -166,7 +168,7 @@ func (s *Session) handle(in inbound) {
 	}
 	if in.cmd.Type == "restart" {
 		seed := in.seed
-		if seed == 0 {
+		if s.chosen = seed != 0; !s.chosen {
 			seed = randomSeed()
 		}
 		s.epoch++
@@ -175,7 +177,7 @@ func (s *Session) handle(in inbound) {
 		return
 	}
 	if in.cmd.Type == "save" {
-		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.sim.Tick, s.sim.Score, s.sim.Log}})
+		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.chosen, s.sim.Tick, s.sim.Score, s.sim.Log}})
 		return
 	}
 	a := s.sim.Apply(in.cmd)
@@ -205,7 +207,7 @@ func (s *Session) snapshot() {
 	s.sim.Take()
 	s.dirty = false
 	c := s.cfg
-	s.send(map[string]any{"type": "snapshot", "epoch": s.epoch, "seed": s.sim.Seed, "lastSeq": s.sim.LastSeq(),
+	s.send(map[string]any{"type": "snapshot", "epoch": s.epoch, "seed": s.sim.Seed, "chosen": s.chosen, "lastSeq": s.sim.LastSeq(),
 		"config": map[string]any{"practice": c.Practice, "tps": sim.TPS, "healthMax": c.Health.Max,
 			"linkBase": c.Link.BaseCost, "linkPerCell": c.Link.PerCell, "minNodeGap": c.MinNodeGap, "maxServers": c.MaxServers,
 			"learnSeconds": c.Health.LearnSeconds, "startSec": c.Request.StartSec, "sources": reserved(c), "refundPercent": c.RefundPercent,

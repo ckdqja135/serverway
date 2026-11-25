@@ -669,3 +669,44 @@ func TestWebSocketIsFasterAndEarnsMore(t *testing.T) {
 		t.Fatalf("왕복 %d→%d 수익 %d→%d", slow, fast, few, many)
 	}
 }
+
+// 빈자리를 서버로 메워도 새 클라이언트는 나온다.
+func TestCannotBlockSources(t *testing.T) {
+	c := Default()
+	c.Health.FailPenalty, c.Faults = 0, nil
+	c.Endless.FaultEverySec = 0
+	s := New(c, 1)
+	s.Paused = false
+	seq, born := int64(0), 0
+	do := func(cmd Command) bool { seq++; cmd.Seq = seq; return s.Apply(cmd).OK }
+	for s.Tick < 900*TPS {
+		if s.Pending != nil {
+			do(Command{Type: "reward"})
+		}
+		if s.Tick%(5*TPS) == 0 {
+			s.Budget = 1 << 20
+			a := s.Area()
+			for x := a.X + 1; x < a.X+a.W-1; x++ {
+				for y := a.Y + 1; y < a.Y+a.H-1; y++ {
+					gap := 99.0
+					for _, n := range s.Nodes {
+						gap = min(gap, dist(x, y, n.X, n.Y))
+					}
+					if gap >= 4 && gap <= 6 {
+						do(Command{Type: "build", X: x, Y: y})
+					}
+				}
+			}
+		}
+		s.Advance(1)
+		s.Take()
+	}
+	for _, n := range s.Nodes {
+		if n.Kind == Source {
+			born++
+		}
+	}
+	if want := len(c.Sources) + s.sourceN - len(s.Coming); born != want {
+		t.Fatalf("클라이언트 %d, 나와야 할 수 %d", born, want)
+	}
+}

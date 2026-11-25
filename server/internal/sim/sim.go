@@ -655,8 +655,7 @@ func (s *Sim) stepGrowth() {
 func (s *Sim) spot() (int, int, bool) {
 	a := s.Area()
 	bx, by, best := 0, 0, 0.0
-	for range 32 {
-		x, y := a.X+1+s.rand(max(1, a.W-2)), a.Y+1+s.rand(max(1, a.H-2))
+	try := func(x, y int, near float64) {
 		gap := math.Inf(1)
 		for _, n := range s.Nodes {
 			gap = math.Min(gap, dist(x, y, n.X, n.Y))
@@ -665,8 +664,19 @@ func (s *Sim) spot() (int, int, bool) {
 			gap = math.Min(gap, dist(x, y, c.X, c.Y))
 		}
 		// 너무 외딴 곳보다 기존 서비스망 근처를 고른다.
-		if gap >= 3 && gap <= 9 && gap > best {
+		if gap >= near && gap <= 9 && gap > best {
 			bx, by, best = x, y, gap
+		}
+	}
+	for range 32 {
+		try(a.X+1+s.rand(max(1, a.W-2)), a.Y+1+s.rand(max(1, a.H-2)), 3)
+	}
+	// 빈자리를 메워 새 클라이언트를 막을 수 없게, 못 찾으면 모든 칸에서 좁은 곳까지 찾는다.
+	if best == 0 {
+		for x := a.X + 1; x < a.X+a.W-1; x++ {
+			for y := a.Y + 1; y < a.Y+a.H-1; y++ {
+				try(x, y, float64(s.Cfg.MinNodeGap))
+			}
 		}
 	}
 	return bx, by, best > 0

@@ -9,6 +9,7 @@ import { Help, Menu, ResultModal, RewardModal } from './ui/Overlays'
 import { LessonCard, LessonEnd, LessonIntro, learned, setLearned, useLesson } from './ui/Lesson'
 import { Panel } from './ui/Panel'
 import { Start } from './ui/Start'
+import { springTrap } from './watch'
 import { LOCAL, host } from './wire'
 
 const TIP_ROOM = 120 // 위쪽 두 줄 안내의 아래 끝
@@ -148,6 +149,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   return (
     <div className="game" data-focus={focus}>
       <canvas ref={cv} aria-label="게임 보드" />
+      <div className="aside" aria-hidden><button tabIndex={-1} onClick={springTrap}>자동 최적화</button><button tabIndex={-1} onClick={springTrap}>예산 1000 받기</button></div>
       {h && <>
         <Hud g={g} onMenu={() => setMenu(true)} onFocus={focusFault} />
         <Panel g={g} sel={sel} onClose={() => select(null)} confirm={confirm} setConfirm={setConfirm} />
