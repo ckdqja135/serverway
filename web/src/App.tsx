@@ -11,6 +11,7 @@ import { Panel } from './ui/Panel'
 import { Start } from './ui/Start'
 import { LOCAL, host } from './wire'
 
+const TIP_ROOM = 120 // 위쪽 두 줄 안내의 아래 끝
 const pref = (k: string, d: boolean) => (localStorage.getItem(k) ?? String(d)) === 'true'
 
 export function App() {
@@ -64,21 +65,26 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
     return () => { b.destroy(); g.close() }
   }, [g])
   useEffect(() => { select(null); setTool('connect') }, [g.resets])
-  // 작은 화면에서는 안내와 알림이 노드를 가리지 않게 보드를 그 사이에 맞춘다.
-  useEffect(() => {
-    if (!board.current) return
-    const edge = (q: string) => document.querySelector(q)?.getBoundingClientRect()
-    const top = edge('.lesson, .tip'), low = [edge('.alerts > *'), edge('.pausebar')].filter((r) => !!r)
-    board.current.cover = top ? top.bottom + 6 : 0
-    board.current.under = low.length ? window.innerHeight - Math.min(...low.map((r) => r.top)) + 6 : 0
-  })
-
   const h = g.ready ? g.head : null
   const overlay = menu || help || !!g.news
   const [hidden, setHidden] = useState(document.hidden)
   const step = useTutorial(g)
   const lesson = useLesson(g, overlay || hidden)
   const tips = tutorial && !lesson
+  // 작은 화면에서는 안내와 알림이 노드를 가리지 않게 보드를 그 사이에 맞춘다. 뜨고 사라질 때마다
+  // 보드가 움직이지 않도록 자리를 미리 비우고, 튜토리얼 설명과 시작 막대에 맞춰 넓힌 자리는 줄이지 않는다.
+  const hold = useRef({ key: '', top: 0, low: 0 })
+  useEffect(() => {
+    if (!board.current) return
+    const edge = (q: string) => document.querySelector(q)?.getBoundingClientRect()
+    const key = `${window.innerWidth} ${g.resets} ${!!lesson} ${tips}`
+    if (hold.current.key !== key) hold.current = { key, top: lesson || tips ? TIP_ROOM : 0, low: 0 }
+    const top = edge('.lesson'), low = edge('.pausebar'), tall = window.innerHeight > window.innerWidth
+    if (top) hold.current.top = Math.max(hold.current.top, top.bottom + 6)
+    if (low && tall) hold.current.low = Math.max(hold.current.low, window.innerHeight - low.top + 6)
+    board.current.cover = hold.current.top
+    board.current.under = hold.current.low
+  })
   const hint = (lesson ? lesson.step?.hint?.(g) : tips && step?.hint) || null
   if (board.current) board.current.ui = { selection: sel, tool, hint }
   // 업그레이드 버튼은 안내한 대상을 골랐을 때만 강조한다.
@@ -206,15 +212,15 @@ function useTutorial(g: GameClient): Step | null {
     if (!linked(API, DB)) return { text: '이번에는 서버에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: pair(API, DB) }
     if (!h.started) return { text: '길이 완성됐습니다. 시작을 누르면 첫 트래픽이 출발합니다.' }
     if (h.completed < 2) return { text: '동그라미는 나가는 요청, 초록 네모는 돌아오는 응답입니다. 클라이언트에 돌아오면 완료입니다.' }
-    if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 남은 시간 동안 다른 서버를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
+    if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 다른 서버를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
     const lone = nodes.find((n) => n.kind === SOURCE && !n.routed)
     if (lone) return { text: `아직 연결되지 않은 클라이언트가 있습니다 (클라이언트 ${lone.index}). 가까운 서버로 끌어 연결하세요.` }
     const server = nodes.find((n) => n.kind !== SOURCE && (n.state === 'busy' || n.state === 'full') && !(n.stuck > 0 && n.stuck >= n.slots))
-    if (server && !seen.jam) return { text: `${nodeName(server)}에 구슬이 쌓이고 있습니다. 밀린 줄의 맨 앞이 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' 서버를 추가하세요.' : server.kind === CACHE ? ' Redis를 하나 더 추가하세요.' : ' DB 샤드를 추가하세요. 서버를 늘려도 DB 병목은 풀리지 않습니다.'}`, done: ok('jam') }
+    if (server && !seen.jam) return { text: `${nodeName(server)}에 구슬이 쌓여 병목입니다. 눌러서 업그레이드하거나${server.kind === API ? ' 서버를 추가하세요.' : server.kind === CACHE ? ' Redis를 하나 더 추가하세요.' : ' DB 샤드를 추가하세요.'}`, done: ok('jam') }
     const packed = nodes.find((n) => n.store && n.store.data * 100 >= n.store.cap * g.config.storageWarn)
-    if (packed && !seen.store) return { text: `${nodeName(packed)}의 저장 공간이 차고 있습니다. 눌러서 저장 공간을 늘리거나 DB 샤드를 추가해 나누세요.`, hint: { node: packed.id }, done: ok('store') }
-    if (links.some((l) => l.state === 'full') && !seen.link) return { text: '빨간 링크는 전송 용량이 한계입니다. 눌러서 업그레이드하거나 링크를 하나 더 만드세요.', done: ok('link') }
-    if (h.completed >= 2 && h.tick < 60 * g.config.tps && !seen.grow) return { text: '트래픽은 점점 늘어납니다. 노드나 링크를 누르면 여유가 얼마나 있는지 볼 수 있습니다.', done: ok('grow') }
+    if (packed && !seen.store) return { text: `${nodeName(packed)}의 저장 공간이 차고 있습니다. 눌러서 늘리거나 DB 샤드를 추가하세요.`, hint: { node: packed.id }, done: ok('store') }
+    if (links.some((l) => l.state === 'full') && !seen.link) return { text: '빨간 링크는 전송 한계입니다. 눌러서 업그레이드하거나 하나 더 만드세요.', done: ok('link') }
+    if (h.completed >= 2 && h.tick < 60 * g.config.tps && !seen.grow) return { text: '트래픽은 점점 늘어납니다. 노드나 링크를 누르면 여유를 볼 수 있습니다.', done: ok('grow') }
     return null
   }, [g, g.version, seen])
 }
