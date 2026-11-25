@@ -75,6 +75,7 @@ export class Board {
     on('pointermove', (e) => this.move(e))
     on('pointerup', (e) => this.up(e))
     on('pointercancel', (e) => { this.pointers.delete(e.pointerId); this.drag = this.pan = null; if (!this.pointers.size) this.pinch = null })
+    on('touchend', (e) => { if (e.cancelable) e.preventDefault() }) // 방금 열린 패널의 버튼까지 같은 터치로 눌리지 않게 한다
     on('pointerleave', () => { this.mouse.inside = false })
     on('contextmenu', (e) => { e.preventDefault(); if (this.touch) return; this.drag = null; this.onTool('connect') }) // 길게 누르기로 끌기가 끊기지 않게 한다
     const loop = (t: number) => {
