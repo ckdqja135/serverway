@@ -25,10 +25,6 @@ export function RewardModal({ g }: { g: GameClient }) {
   const ref = useRef<HTMLButtonElement>(null)
   useEffect(() => { ref.current?.focus() }, [r?.phase])
   if (!r) return null
-  const pick = async (i: number) => {
-    const o = r.options[i], a = await g.send('reward', { index: i })
-    if (a.ok) g.say(`${REWARD[o.id]?.name}: ${o.gains.map((v) => `${v.label} ${v.from} → ${v.to}`).join(', ')}`)
-  }
   return (
     <div className="veil" role="dialog" aria-modal aria-label="구간 보상">
       <div ref={fit} className="modal">
@@ -41,7 +37,7 @@ export function RewardModal({ g }: { g: GameClient }) {
         <p className="muted">{g.grew && '판도 넓어집니다. '}개선 작업을 하나 고르세요. 고르는 동안 시간은 멈춥니다.</p>
         <div className="cards">
           {r.options.map((o, i) => (
-            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" onClick={() => pick(i)}>
+            <button key={o.id} ref={i === 0 ? ref : undefined} className="card" onClick={() => g.send('reward', { index: i })}>
               <span className="ic">{REWARD[o.id]?.icon}</span><b>{REWARD[o.id]?.name ?? o.id}</b><span>{REWARD[o.id]?.text(o.amount)}</span>
               {o.gains.map((v) => <span key={v.label} className="delta"><small>{v.label}</small><span>{v.from}<ArrowRight size={14} aria-hidden /><b>{v.to}</b></span></span>)}
             </button>
