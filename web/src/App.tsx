@@ -171,7 +171,7 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
           </div>
         )}
         <RewardModal g={g} />
-        <ResultModal g={g} onHome={onHome} onRestart={restart} />
+        <ResultModal g={g} onHome={onHome} onRestart={restart} frame={() => board.current?.frame()} />
         {lesson && !overlay && <LessonCard g={g} lesson={lesson} onSkip={onLearned} />}
         {lesson?.stage === 'intro' && <LessonIntro onNext={lesson.next} onSkip={onLearned} />}
         {lesson?.stage === 'end' && <LessonEnd onDone={onLearned} onHome={() => { setLearned(); onHome() }} />}

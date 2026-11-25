@@ -8,6 +8,6 @@ const blocked = (e: KeyboardEvent) => {
 }
 
 export function guard() {
-  window.addEventListener('contextmenu', (e) => e.preventDefault(), true)
+  window.addEventListener('contextmenu', (e) => { if (!(e.target instanceof HTMLImageElement)) e.preventDefault() }, true) // 기록 이미지는 길게 눌러 저장할 수 있다
   window.addEventListener('keydown', (e) => { if (blocked(e)) { e.preventDefault(); e.stopPropagation() } }, true)
 }

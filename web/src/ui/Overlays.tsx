@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, revenueText, type Best, type Result } from '../types'
@@ -7,6 +7,7 @@ import { Boosts } from './Growth'
 import { WhenToGrow } from './Lesson'
 import { Toggles } from './Toggles'
 import { useFit } from './fit'
+import { shareImage, type Frame } from './shot'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
@@ -66,12 +67,13 @@ async function shareResult(r: Result, g: GameClient): Promise<string> {
   return ok ? copied : '이 브라우저에서는 복사할 수 없습니다. 다른 브라우저에서 열어 주세요.'
 }
 
-export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void }) {
+export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void; frame: () => Frame | undefined }) {
   const r = g.result, fit = useFit()
   const [best, setBest] = useState<{ old: Best | null; isNew: boolean } | null>(null)
   const [note, setNote] = useState('')
+  const [shot, setShot] = useState('')
   useEffect(() => {
-    setNote('')
+    setNote(''); setShot('')
     if (!r) return setBest(null)
     const old = loadBest()
     const isNew = !g.chosen && !g.odd && r.score > (old?.score ?? 0)
@@ -79,6 +81,7 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
     setBest({ old, isNew })
   }, [r?.seed, r?.score, r?.over])
   if (!r) return null
+  const image = async () => { const a = await shareImage(r, g, frame()).catch(() => ({ note: '이미지를 만들지 못했습니다. 화면을 캡처해 주세요.', show: '' })); setNote(a.note); setShot(a.show ?? '') }
   const total = r.failures.reduce((a, b) => a + b, 0)
   const rate = r.completed + total ? (r.completed / (r.completed + total)) * 100 : 0
   return (
@@ -109,11 +112,13 @@ export function ResultModal({ g, onHome, onRestart }: { g: GameClient; onHome: (
           <button onClick={onHome}><House size={16} aria-hidden />처음으로</button>
           <button onClick={() => onRestart(r.seed)}><RotateCcw size={16} aria-hidden />같은 시드 {r.seed}</button>
           <button onClick={async () => setNote(await shareResult(r, g))}><Share2 size={16} aria-hidden />기록 공유</button>
+          <button onClick={image}><ImageIcon size={16} aria-hidden />이미지 공유</button>
           <button className="primary" onClick={() => onRestart()}><Shuffle size={16} aria-hidden />새 시드로 다시</button>
         </div>
         {note && <p role="status">{note}</p>}
         <p className="fine">시드는 운을 정하는 번호입니다.<span> 같은 시드는 이번 판과 같은 운의 연습, 새 시드는 새로운 운의 기록 도전입니다.</span></p>
       </div>
+      {shot && <div className="veil shot" role="dialog" aria-modal aria-label="기록 이미지" onClick={() => setShot('')}><img src={shot} alt="기록 이미지" onClick={(e) => e.stopPropagation()} /><p>이미지를 길게 눌러 저장하거나 공유하세요. 바깥을 누르면 닫힙니다.</p></div>}
     </div>
   )
 }

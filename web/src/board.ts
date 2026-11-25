@@ -90,6 +90,7 @@ export class Board {
 
   destroy() { cancelAnimationFrame(this.raf); this.off.forEach((f) => f()) }
   cancel() { this.drag = null }
+  frame() { const c = this.cam; return { x: this.ox + c.x * this.S, y: this.oy + c.y * this.S, w: c.w * this.S, h: c.h * this.S } }
   resetView() { this.view = { z: 1, x: 0, y: 0 } }
 
   // 좌표
