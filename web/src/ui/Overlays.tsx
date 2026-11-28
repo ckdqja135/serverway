@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Check, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
 import { FAIL, FAULT_TEXT, clockText, loadBest, revenueText, type Best, type Result } from '../types'
@@ -167,38 +167,65 @@ export function Menu({ g, onClose, onHome, onRestart, onSkip, tutorial, setTutor
 
 export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
   const c = g.config
+  const [page, setPage] = useState(0), [dir, setDir] = useState('')
+  const swipe = useRef<{ x: number; y: number } | null>(null), body = useRef<HTMLDivElement>(null)
+  // 한 화면에 다 늘어놓으면 너무 길어서, 주제별로 나눠 좌우로 넘긴다.
+  const pages: [string, ReactNode][] = [
+    ['언제 무엇을 늘리나', <WhenToGrow />],
+    ['기본 규칙', <ul>
+      <li>요청은 클라이언트, 서버, DB 순서로 처리된 뒤 <b>지나온 링크로 되돌아와야</b> 완료됩니다. 완료 하나에 {c.score}점입니다.</li>
+      <li><b>마라톤:</b> 끝나는 시간이 없습니다. 클라이언트와 트래픽, 보드가 계속 늘어나며 서비스 상태가 0이 되면 끝납니다. 8분부터는 전체 트래픽이 점점 더 빠르게 늘어납니다.</li>
+      <li><b>판:</b> 구간을 넘길 때마다 판이 넓어져 서버와 DB를 더 지을 수 있습니다.</li>
+      <li><b>예산:</b> 구간마다 들어오고 구간이 오를수록 많아집니다. 구간을 넘길 때 가진 예산의 {g.head.interestPercent}%를 보너스로 받습니다(그 구간 수입까지). 요청을 완료해도 벌리며 지금은 {revenueText(g.head)}입니다. 서버와 DB가 늘면 운영비 때문에 더 완료해야 하지만, 구간이 오를수록 수익이 커집니다.</li>
+      <li><b>구간 보상:</b> 선택지는 구간마다 2, 3, 4, 5개로 늘고 그 뒤로는 계속 5개입니다. 4개부터는 2개를 고릅니다.</li>
+      <li><b>철거:</b> 새 요청만 막고 이미 나간 요청이 돌아온 뒤 사라집니다. 비용의 {c.refundPercent}%를 돌려받습니다.</li>
+    </ul>],
+    ['실패와 운', <ul>
+      <li><b>실패:</b> 502 경로 없음, 503 클라이언트 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다.{c.lossPerSec > 0 && ` 실패가 한꺼번에 몰려도 1초에 ${c.lossPerSec / 1000}%까지만 줄어듭니다.`} {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
+      <li><b>장애:</b> 시작 전에 예고합니다. 대상은 많이 쓰는 서버나 링크입니다.</li>
+      <li><b>시드:</b> 운을 정하는 번호입니다. 같은 시드면 어떻게 플레이하든 구간 보상 카드와 장애가 오는 순서가 같습니다. 지금 받아도 소용없는 보상(서비스 상태가 가득할 때의 핫픽스 배포, 이미 최대인 강화, 저장 공간이 열리기 전의 스토리지 확장)은 건너뛰고 다음 카드가 나옵니다. 장애가 걸리는 서버나 링크, 새 클라이언트가 실제로 놓이는 자리는 지어 둔 것을 보고 정하므로 플레이에 따라 달라질 수 있습니다. 하던 판을 계속하는 이어서 하기와는 다릅니다. 번호를 직접 넣거나 같은 시드로 다시 시작한 판은 연습이라 최고 기록에 남지 않습니다.</li>
+    </ul>],
+    ['처리와 연결', <ul>
+      <li><b>처리 용량:</b> 서버와 DB 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
+      <li><b>링크 용량:</b> 한 차선이 초당 보낼 수 있는 수입니다. 가는 차선과 돌아오는 차선은 따로입니다.</li>
+      <li><b>경로 선택:</b> 지금 보낼 수 있는 링크 중 이동 시간과 도착지 예상 대기를 더한 값이 가장 짧은 곳으로 갑니다. 같으면 먼저 만든 링크입니다.</li>
+      <li>선이 교차해도 이어지지 않습니다. 실제 네트워크를 단순하게 만든 게임 규칙이며 재시도, 로드밸런서, 데이터 일관성은 다루지 않습니다.</li>
+    </ul>],
+    ['규모 키우기', <ul>
+      <li><b>DB 샤드:</b> DB를 더 지으면 요청을 나눠 처리합니다. 어느 샤드로 가도 된다고 단순하게 만들었으며, 서버에서 샤드로 링크를 이어야 쓰입니다.</li>
+      <li><b>저장 공간:</b> 성장 서비스부터 DB가 처리할 때마다 데이터가 쌓입니다. 가득 차면 속도가 {c.storageSlow}%로 떨어집니다. 저장 공간을 늘리거나 샤드를 추가해 나눕니다.</li>
+      <li><b>Redis:</b> 국민 서비스부터 지을 수 있습니다. 서버에서 이으면 요청의 일부를 DB 대신 응답합니다. DB로 가는 링크도 있어야 합니다.</li>
+      <li><b>WebSocket:</b> 국민 서비스부터 클라이언트와 서버 사이 링크를 전환할 수 있습니다. {c.wsSpeed / 100}배 빠르고 {c.wsRate / 100}배 많이 보내며 처리 수익이 {c.wsRevenue / 100}배입니다.</li>
+    </ul>],
+    ['조작', <table><tbody>
+      <tr><th>드래그</th><td>클라이언트에서 서버로, 서버에서 DB로 연결</td></tr><tr><th>클릭</th><td>노드나 링크 선택, 빈 곳은 선택 해제</td></tr>
+      <tr><th>두 손가락</th><td>확대와 이동 (휴대폰, 태블릿)</td></tr><tr><th>Space</th><td>일시 정지, 계속</td></tr><tr><th>S</th><td>속도 1x, 2x, 3x</td></tr><tr><th>1 / 2 / 3 / 4</th><td>연결 / 서버 추가 / DB 샤드 추가 / Redis 추가</td></tr>
+      <tr><th>U</th><td>선택한 대상 업그레이드</td></tr><tr><th>Delete</th><td>선택한 대상 철거 (확인 후)</td></tr><tr><th>Esc</th><td>도구와 선택 취소</td></tr>
+    </tbody></table>],
+  ]
+  const go = (to: number) => { if (to >= 0 && to < pages.length) { setDir(to > page ? 'next' : 'prev'); setPage(to); body.current?.scrollTo(0, 0) } }
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'ArrowRight') go(page + 1); else if (e.key === 'ArrowLeft') go(page - 1) }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [page])
+  const flick = (e: { clientX: number; clientY: number }) => {
+    const s = swipe.current, dx = s ? e.clientX - s.x : 0, dy = s ? e.clientY - s.y : 0
+    swipe.current = null
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) go(page + (dx < 0 ? 1 : -1))
+  }
   return (
     <div className="veil" role="dialog" aria-modal aria-label="게임 규칙과 조작법" onClick={onClose}>
-      <div className="modal help" onClick={(e) => e.stopPropagation()}>
+      <div className="modal help" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => { swipe.current = { x: e.clientX, y: e.clientY } }} onPointerUp={flick}>
         <button className="x" onClick={onClose} aria-label="닫기" autoFocus><X size={16} /></button>
-        <h2>언제 무엇을 늘리나</h2>
-        <WhenToGrow />
-        <h2>게임 규칙</h2>
-        <ul>
-          <li>요청은 클라이언트, 서버, DB 순서로 처리된 뒤 <b>지나온 링크로 되돌아와야</b> 완료됩니다. 완료 하나에 {c.score}점입니다.</li>
-          <li><b>마라톤:</b> 끝나는 시간이 없습니다. 클라이언트와 트래픽, 보드가 계속 늘어나며 서비스 상태가 0이 되면 끝납니다. 8분부터는 전체 트래픽이 점점 더 빠르게 늘어납니다.</li>
-          <li><b>판:</b> 구간을 넘길 때마다 판이 넓어져 서버와 DB를 더 지을 수 있습니다.</li>
-          <li><b>예산:</b> 구간마다 들어오고 구간이 오를수록 많아집니다. 구간을 넘길 때 가진 예산의 {g.head.interestPercent}%를 보너스로 받습니다(그 구간 수입까지). 요청을 완료해도 벌리며 지금은 {revenueText(g.head)}입니다. 서버와 DB가 늘면 운영비 때문에 더 완료해야 하지만, 구간이 오를수록 수익이 커집니다.</li>
-          <li><b>구간 보상:</b> 선택지는 구간마다 2, 3, 4, 5개로 늘고 그 뒤로는 계속 5개입니다. 4개부터는 2개를 고릅니다.</li>
-          <li><b>저장 공간:</b> 성장 서비스부터 DB가 처리할 때마다 데이터가 쌓입니다. 가득 차면 속도가 {c.storageSlow}%로 떨어집니다. 저장 공간을 늘리거나 샤드를 추가해 나눕니다.</li>
-          <li><b>Redis:</b> 국민 서비스부터 지을 수 있습니다. 서버에서 이으면 요청의 일부를 DB 대신 응답합니다. DB로 가는 링크도 있어야 합니다.</li>
-          <li><b>WebSocket:</b> 국민 서비스부터 클라이언트와 서버 사이 링크를 전환할 수 있습니다. {c.wsSpeed / 100}배 빠르고 {c.wsRate / 100}배 많이 보내며 처리 수익이 {c.wsRevenue / 100}배입니다.</li>
-          <li><b>DB 샤드:</b> DB를 더 지으면 요청을 나눠 처리합니다. 어느 샤드로 가도 된다고 단순하게 만들었으며, 서버에서 샤드로 링크를 이어야 쓰입니다.</li>
-          <li><b>경로 선택:</b> 지금 보낼 수 있는 링크 중 이동 시간과 도착지 예상 대기를 더한 값이 가장 짧은 곳으로 갑니다. 같으면 먼저 만든 링크입니다.</li>
-          <li><b>처리 용량:</b> 서버와 DB 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
-          <li><b>링크 용량:</b> 한 차선이 초당 보낼 수 있는 수입니다. 가는 차선과 돌아오는 차선은 따로입니다.</li>
-          <li><b>실패:</b> 502 경로 없음, 503 클라이언트 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다.{c.lossPerSec > 0 && ` 실패가 한꺼번에 몰려도 1초에 ${c.lossPerSec / 1000}%까지만 줄어듭니다.`} {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
-          <li><b>시드:</b> 운을 정하는 번호입니다. 같은 시드면 어떻게 플레이하든 구간 보상 카드와 장애가 오는 순서가 같습니다. 지금 받아도 소용없는 보상(서비스 상태가 가득할 때의 핫픽스 배포, 이미 최대인 강화, 저장 공간이 열리기 전의 스토리지 확장)은 건너뛰고 다음 카드가 나옵니다. 장애가 걸리는 서버나 링크, 새 클라이언트가 실제로 놓이는 자리는 지어 둔 것을 보고 정하므로 플레이에 따라 달라질 수 있습니다. 하던 판을 계속하는 이어서 하기와는 다릅니다. 번호를 직접 넣거나 같은 시드로 다시 시작한 판은 연습이라 최고 기록에 남지 않습니다.</li>
-          <li><b>철거:</b> 새 요청만 막고 이미 나간 요청이 돌아온 뒤 사라집니다. 비용의 {c.refundPercent}%를 돌려받습니다.</li>
-          <li><b>장애:</b> 시작 전에 예고합니다. 대상은 많이 쓰는 서버나 링크입니다.</li>
-          <li>선이 교차해도 이어지지 않습니다. 실제 네트워크를 단순하게 만든 게임 규칙이며 재시도, 로드밸런서, 데이터 일관성은 다루지 않습니다.</li>
-        </ul>
-        <h2>조작</h2>
-        <table><tbody>
-          <tr><th>드래그</th><td>클라이언트에서 서버로, 서버에서 DB로 연결</td></tr><tr><th>클릭</th><td>노드나 링크 선택, 빈 곳은 선택 해제</td></tr>
-          <tr><th>두 손가락</th><td>확대와 이동 (휴대폰, 태블릿)</td></tr><tr><th>Space</th><td>일시 정지, 계속</td></tr><tr><th>S</th><td>속도 1x, 2x, 3x</td></tr><tr><th>1 / 2 / 3 / 4</th><td>연결 / 서버 추가 / DB 샤드 추가 / Redis 추가</td></tr>
-          <tr><th>U</th><td>선택한 대상 업그레이드</td></tr><tr><th>Delete</th><td>선택한 대상 철거 (확인 후)</td></tr><tr><th>Esc</th><td>도구와 선택 취소</td></tr>
-        </tbody></table>
+        <div className="pages" data-dir={dir} ref={body}>
+          {pages.map(([title, body], i) => <section key={title} className={i === page ? 'on' : ''}><h2>{title}</h2>{body}</section>)}
+        </div>
+        <nav className="pager">
+          <button onClick={() => go(page - 1)} disabled={page === 0}><ChevronLeft size={16} aria-hidden />이전</button>
+          <span>{pages.map(([title], i) => <button key={title} aria-label={`${i + 1}. ${title}`} aria-current={i === page} onClick={() => go(i)} />)}</span>
+          {page < pages.length - 1 ? <button className="primary" onClick={() => go(page + 1)}>다음<ChevronRight size={16} aria-hidden /></button> : <button className="primary" onClick={onClose}>닫기</button>}
+        </nav>
       </div>
     </div>
   )
