@@ -11,6 +11,19 @@ export type Status = 'connecting' | 'open' | 'lost' | 'ended'
 const MAX_FX = 120
 const DID: Record<string, Sfx> = { link: 'link', build: 'build', upgradeNode: 'up', upgradeLink: 'up', storage: 'up', websocket: 'up', removeLink: 'remove', removeNode: 'remove' } // 명령이 받아들여졌을 때의 소리
 const MAX_LOG = 60
+// 요청 로그에 보이는 API. 요청 번호로 골라 같은 요청은 늘 같은 줄로 보인다. 표시만 바꾸며 게임 결과와는 상관없다.
+const APIS = [
+  'GET /products', 'GET /products/:id', 'GET /search', 'GET /cart', 'POST /cart', 'PUT /cart/:id', 'DELETE /cart/:id', 'POST /orders', 'GET /orders/:id',
+  'PATCH /orders/:id', 'DELETE /posts/:id', 'POST /payments', 'GET /users/me', 'PUT /users/me', 'PATCH /settings', 'POST /login', 'POST /token',
+  'DELETE /session', 'GET /feed', 'GET /reviews', 'POST /reviews', 'PUT /reviews/:id', 'DELETE /likes/:id', 'GET /alerts', 'PATCH /alerts/:id',
+  'GET /coupons', 'POST /uploads',
+]
+const api = (r = 0) => {
+  let h = Math.imul(r ^ (r >>> 16), 0x45d9f3b)
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
+  h = (h ^ (h >>> 16)) >>> 0
+  return APIS[h % APIS.length].replace(':id', String(((h >>> 8) % 900) + 100))
+}
 
 function turn(o: { x: number; y: number; w?: number; h?: number }) {
   [o.x, o.y] = [o.y, o.x]
@@ -248,7 +261,7 @@ export class GameClient {
         this.dropDot(e.r!)
         sfx('done')
         if (node) this.addFx({ kind: 'done', x: node.x, y: node.y, at: now })
-        this.log(e.at, 200, `GET /order ${((e.a ?? 0) / 1000).toFixed(1)}s`)
+        this.log(e.at, 200, `${api(e.r)} ${((e.a ?? 0) / 1000).toFixed(1)}s`)
         break
       case 'cache': if (node) this.addFx({ kind: 'cache', x: node.x, y: node.y, at: now, text: '캐시' }); break
       case 'fail': {
@@ -258,7 +271,7 @@ export class GameClient {
         sfx('fail')
         if (at) this.addFx({ kind: 'fail', x: at.x, y: at.y, at: now, text: String(f.code) })
         else if (node) this.addFx({ kind: 'fail', x: node.x, y: node.y, at: now, text: String(f.code) })
-        this.log(e.at, f.code, `GET /order ${((e.b ?? 0) / 1000).toFixed(1)}s ${f.name}`)
+        this.log(e.at, f.code, `${api(e.r)} ${((e.b ?? 0) / 1000).toFixed(1)}s ${f.name}`)
         break
       }
       case 'fault':
