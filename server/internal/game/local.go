@@ -14,6 +14,7 @@ type Save struct {
 	Seed   uint64         `json:"seed"`
 	Chosen bool           `json:"chosen,omitempty"`
 	Rules  int            `json:"rules,omitempty"` // 시작한 규칙 판수. 없으면 1판
+	Hard   bool           `json:"hard,omitempty"`  // 하드 모드
 	Tick   int            `json:"tick"`
 	Score  int            `json:"score"`
 	Log    []sim.LogEntry `json:"log"`
@@ -28,6 +29,9 @@ type Local struct {
 // OpenLocal은 새 판을 열거나 기록을 다시 계산해 이어 연다. 기록은 시작한 판수의 규칙으로 계산하므로 배포 뒤에도 이어진다.
 // 그래도 결과가 다르면(판수를 올리지 않고 규칙을 바꿨다면) 이어 하지 않는다. 다시 시작하면 지금 규칙을 따른다.
 func OpenLocal(ctx context.Context, cfg *sim.Config, seed uint64, save *Save) (*Local, error) {
+	if save != nil && save.Hard && !cfg.Hard {
+		cfg = sim.Hard(cfg)
+	}
 	s := newSession(cfg, seed)
 	if save != nil {
 		if save.Tick < 0 || save.Tick > maxSaveTick {

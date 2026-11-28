@@ -101,11 +101,42 @@ type SourceDef struct {
 }
 
 type FaultDef struct {
-	Type        string `json:"type"` // api_slow, api_down, link_block
+	Type        string `json:"type"` // api_slow, api_down, link_block, 하드 모드의 보안 사고 hack, leak, ddos, ransom
 	AtSec       int    `json:"atSec"`
 	NoticeSec   int    `json:"noticeSec"`
 	DurationSec int    `json:"durationSec"`
 	Percent     int    `json:"percent"` // api_slow에서 남는 처리 속도
+}
+
+// HardDef는 하드 모드의 시작 상태다. 스타트업 규모로 이미 갖춘 서비스에서 시작한다.
+type HardDef struct {
+	Budget        int         `json:"budget"`
+	FaultFromSec  int         `json:"faultFromSec"`
+	SourceFromSec int         `json:"sourceFromSec"`
+	Areas         []Area      `json:"areas"`
+	Sources       []SourceDef `json:"sources"`
+	APIs          []Pos       `json:"apis"`
+	DBs           []Pos       `json:"dbs"`
+	Links         [][2]int    `json:"links"` // 처음 놓는 노드의 순서(클라이언트, 서버, DB) 번호로 잇는다
+	Security      Security    `json:"security"`
+}
+
+// Security는 하드 모드의 보안 사고다. 예고한 뒤 공격하며, 그 전에 대상에 보안 패치를 하면 막는다.
+type Security struct {
+	FromSec     int `json:"fromSec"`
+	EverySec    int `json:"everySec"`
+	MinEverySec int `json:"minEverySec"`
+	NoticeSec   int `json:"noticeSec"`
+	PatchCost   int `json:"patchCost"`
+	PatchStep   int `json:"patchStep"` // 구간마다 오르는 패치 비용
+	PatchSec    int `json:"patchSec"`  // 패치하는 동안 서버와 DB는 멈추고, 클라이언트는 요청을 보내지 않는다
+	HackPercent int `json:"hackPercent"` // 해킹당하면 빼앗기는 예산 비율
+	LeakHealth  int `json:"leakHealth"`  // 데이터가 유출되면 한 번에 줄어드는 서비스 상태
+	DDoSSec     int `json:"ddosSec"`
+	DDoSRate    int `json:"ddosRate"` // 가짜 요청, 초당 수의 1000배
+	RansomSec   int `json:"ransomSec"`
+	RansomCost  int `json:"ransomCost"`
+	RansomStep  int `json:"ransomStep"`
 }
 
 type RewardDef struct {
@@ -199,7 +230,9 @@ type Config struct {
 	DB0      Pos         `json:"db0"`
 	Faults   []FaultDef  `json:"faults"`
 	Rewards  []RewardDef `json:"rewards"`
+	HardMode HardDef     `json:"hard"`
 	Practice bool        `json:"-"` // 튜토리얼
+	Hard     bool        `json:"-"` // 하드 모드
 	Rules    int         `json:"-"` // 따르는 규칙 판수
 }
 
@@ -230,7 +263,8 @@ func Parse(data []byte) (*Config, error) {
 		return nil, err
 	}
 	if c.PhaseSeconds < 1 || len(c.PhaseIncome) == 0 || len(c.Ranks) == 0 || len(c.API.Levels) == 0 || len(c.DB.Levels) == 0 || len(c.Redis.Levels) == 0 || len(c.Link.Levels) == 0 ||
-		len(c.Sources) == 0 || c.Link.CellsPerSec < 1 || c.Link.RoomPerCell < 1 || len(c.Areas) == 0 || c.Health.Max < 1 || len(c.Rewards) < 2 {
+		len(c.Sources) == 0 || c.Link.CellsPerSec < 1 || c.Link.RoomPerCell < 1 || len(c.Areas) == 0 || c.Health.Max < 1 || len(c.Rewards) < 2 ||
+		len(c.HardMode.Areas) == 0 || len(c.HardMode.Sources) == 0 || len(c.HardMode.APIs) == 0 || len(c.HardMode.DBs) == 0 {
 		return nil, fmt.Errorf("밸런스 설정에 필요한 값이 빠져 있습니다")
 	}
 	c.Rules = Rules

@@ -177,7 +177,7 @@ func (s *Session) handle(in inbound) {
 		return
 	}
 	if in.cmd.Type == "save" {
-		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.chosen, s.sim.Cfg.Rules, s.sim.Tick, s.sim.Score, s.sim.Log}})
+		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{Seed: s.sim.Seed, Chosen: s.chosen, Rules: s.sim.Cfg.Rules, Hard: s.sim.Cfg.Hard, Tick: s.sim.Tick, Score: s.sim.Score, Log: s.sim.Log}})
 		return
 	}
 	a := s.sim.Apply(in.cmd)
@@ -207,13 +207,15 @@ func (s *Session) snapshot() {
 	s.sim.Take()
 	s.dirty = false
 	c := s.sim.Cfg // 이어 연 예전 판은 그 판수의 값을 보여 준다
+	sec := c.HardMode.Security
 	s.send(map[string]any{"type": "snapshot", "epoch": s.epoch, "seed": s.sim.Seed, "chosen": s.chosen, "lastSeq": s.sim.LastSeq(),
 		"config": map[string]any{"practice": c.Practice, "tps": sim.TPS, "healthMax": c.Health.Max,
 			"linkBase": c.Link.BaseCost, "linkPerCell": c.Link.PerCell, "minNodeGap": c.MinNodeGap, "maxServers": c.MaxServers,
 			"learnSeconds": c.Health.LearnSeconds, "startSec": c.Request.StartSec, "sources": reserved(c), "refundPercent": c.RefundPercent,
 			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent, "lossPerSec": c.Health.MaxLossPerSec,
 			"redisHit": c.Redis.Levels[0].Hit, "wsSpeed": c.WebSocket.SpeedPercent, "wsRate": c.WebSocket.RatePercent, "wsRevenue": c.WebSocket.RevenuePercent,
-			"storageWarn": c.Storage.WarnPercent, "storageSlow": c.Storage.SlowPercent},
+			"storageWarn": c.Storage.WarnPercent, "storageSlow": c.Storage.SlowPercent,
+			"hard": c.Hard, "patchSec": sec.PatchSec, "leakHealth": sec.LeakHealth, "ddosRate": sec.DDoSRate},
 		"head": makeHead(s.sim, s.why), "nodes": nodes, "links": links, "moving": moving, "result": makeResult(s.sim)})
 }
 
@@ -232,6 +234,19 @@ func (s *Session) frame() {
 		"goneNodes": gn, "goneLinks": gl, "events": s.sim.Take(), "result": makeResult(s.sim)})
 }
 
+// Mode는 고른 판의 설정이다. 튜토리얼은 하드 모드에도 따로 있다.
+func Mode(base *sim.Config, practice, hard bool) *sim.Config {
+	switch {
+	case hard && practice:
+		return sim.HardPractice(base)
+	case hard:
+		return sim.Hard(base)
+	case practice:
+		return sim.Practice(base)
+	}
+	return base
+}
+
 type Manager struct {
 	mu  sync.Mutex
 	all map[string]*Session
@@ -243,16 +258,13 @@ func NewManager(ctx context.Context, cfg *sim.Config) *Manager {
 	return &Manager{all: map[string]*Session{}, cfg: cfg, ctx: ctx}
 }
 
-func (m *Manager) Create(seed uint64, practice bool) (*Session, error) {
+func (m *Manager) Create(seed uint64, practice, hard bool) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.all) >= maxSessions {
 		return nil, fmt.Errorf("동시에 열 수 있는 게임 수를 넘었습니다")
 	}
-	cfg := m.cfg
-	if practice {
-		cfg = sim.Practice(cfg)
-	}
+	cfg := Mode(m.cfg, practice, hard)
 	s := newSession(cfg, seed)
 	m.all[s.ID] = s
 	go s.run(m.ctx, func() {

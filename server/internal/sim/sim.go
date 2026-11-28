@@ -95,6 +95,10 @@ type Node struct {
 	Stuck    int // 처리를 마쳤지만 보내지 못하는 요청 수
 	Data     int // DB에 쌓인 데이터
 	Store    int // 저장 공간 증설 단계
+
+	PatchUntil int  // 하드 모드: 보안 패치가 끝나는 틱
+	flood      bool // 하드 모드: DDoS를 받는 중
+	junkAcc    int
 }
 
 // Lane은 한 방향 차선이다. 앞이 막히면 뒤 요청이 줄을 선다.
@@ -136,14 +140,18 @@ type Fault struct {
 	Link     int
 	StartAt  int
 	EndAt    int
-	FailedIn int // 장애 중 실패 수
+	FailedIn int  // 장애 중 실패 수
+	Patched  bool // 하드 모드: 공격 전에 보안 패치를 했다
+	Value    int  // 하드 모드: 빼앗긴 예산, 줄어든 서비스 상태, 낸 몸값
 }
 
 // FaultStat은 장애 종류별 누적 기록이다. 끝난 장애 자체는 최근 것만 남긴다.
 type FaultStat struct {
-	Type   string `json:"type"`
-	Count  int    `json:"count"`
-	Failed int    `json:"failed"`
+	Type    string `json:"type"`
+	Count   int    `json:"count"`
+	Failed  int    `json:"failed"`
+	Blocked int    `json:"blocked,omitempty"` // 보안 사고: 패치로 막은 수
+	Lost    int    `json:"lost,omitempty"`    // 보안 사고: 빼앗긴 예산, 줄어든 서비스 상태, 낸 몸값
 }
 
 // Coming은 나타날 예정인 클라이언트다.
@@ -224,6 +232,9 @@ type Sim struct {
 	faultID  int
 	faultAt  int // 다음 마라톤 장애의 시작 틱
 	faultN   int
+	secAt    int // 하드 모드: 다음 보안 사고가 공격하는 틱
+	secN     int
+	junkID   int // 하드 모드: DDoS 가짜 요청의 번호. 음수로 센다
 	sourceAt int // 다음 마라톤 클라이언트가 나타나는 틱
 	sourceN  int
 	load     int // 튜토리얼: 클라이언트마다 초당 요청 수의 1000배
@@ -241,8 +252,12 @@ func New(cfg *Config, seed uint64) *Sim {
 			s.addSource(i)
 		}
 	}
-	s.addNode(API, cfg.StartAPI.X, cfg.StartAPI.Y)
-	s.addNode(DB, cfg.DB0.X, cfg.DB0.Y)
+	if cfg.Hard {
+		s.layout()
+	} else {
+		s.addNode(API, cfg.StartAPI.X, cfg.StartAPI.Y)
+		s.addNode(DB, cfg.DB0.X, cfg.DB0.Y)
+	}
 	for _, f := range cfg.Faults {
 		s.addFault(f)
 	}
@@ -289,6 +304,7 @@ const (
 	luckFault
 	luckTarget
 	luckSpot
+	luckSecurity
 )
 
 // luck은 시드와 몇 번째 일인지만으로 정하는 운이다. 같은 시드면 어떻게 플레이하든 같은 값이 나온다.
@@ -669,10 +685,11 @@ func (s *Sim) stepGrowth() {
 		s.faultN++
 		s.faultAt += max(e.FaultMinEverySec, e.FaultEverySec-s.faultN*2) * TPS
 	}
+	s.stepSecurity()
 	// 끝난 장애는 최근 것만 남긴다.
 	if len(s.Faults) > 24 {
 		for i, f := range s.Faults {
-			if f.State == "ended" || f.State == "canceled" {
+			if f.State == "ended" || f.State == "canceled" || f.State == "blocked" {
 				s.Faults = append(s.Faults[:i:i], s.Faults[i+1:]...)
 				break
 			}
@@ -724,7 +741,7 @@ func (s *Sim) stat(t string) *FaultStat {
 
 func (s *Sim) stepFaults() {
 	for _, n := range s.Nodes {
-		n.Speed = 100
+		n.Speed, n.flood = 100, false
 	}
 	for _, l := range s.Links {
 		l.Blocked = false
@@ -742,6 +759,10 @@ func (s *Sim) stepFaults() {
 					s.emit(Event{K: "fault", A: f.ID, Text: "canceled"})
 					break
 				}
+				if security(f.Def.Type) {
+					s.strike(f)
+					break
+				}
 				f.State = "active"
 				s.stat(f.Def.Type).Count++
 				s.emit(Event{K: "fault", A: f.ID, Text: "active"})
@@ -749,7 +770,11 @@ func (s *Sim) stepFaults() {
 		case "active":
 			if s.Tick >= f.EndAt || !s.faultTargetAlive(f) {
 				f.State = "ended"
-				s.emit(Event{K: "fault", A: f.ID, Text: "ended"})
+				e := Event{K: "fault", A: f.ID, Text: "ended"}
+				if security(f.Def.Type) {
+					e.S = 1 // 화면에서 장애와 보안 사고를 나눠 알린다
+				}
+				s.emit(e)
 			}
 		}
 		if f.State != "active" {
@@ -762,6 +787,16 @@ func (s *Sim) stepFaults() {
 			s.Node(f.Node).Speed = 0
 		case "link_block":
 			s.Link(f.Link).Blocked = true
+		case "ransom":
+			s.Node(f.Node).Speed = 0
+		case "ddos":
+			s.Node(f.Node).flood = true
+		}
+	}
+	// 보안 패치 중인 서버와 DB는 장애보다 앞서 멈춘다.
+	for _, n := range s.Nodes {
+		if n.PatchUntil > s.Tick && n.Kind != Source {
+			n.Speed = 0
 		}
 	}
 }
@@ -786,9 +821,21 @@ func (s *Sim) noticeFault(f *Fault) {
 			}
 		}
 	} else {
+		// 보안 사고는 종류마다 노리는 곳이 다르다. 해킹과 장애는 서버, 유출과 랜섬웨어는 DB, DDoS는 클라이언트다.
+		k := API
+		switch f.Def.Type {
+		case "leak", "ransom":
+			k = DB
+		case "ddos":
+			k = Source
+		}
 		for _, n := range s.Nodes {
-			if n.Kind == API && !n.Draining {
-				list = append(list, cand{n.ID, n.Done})
+			if n.Kind == k && !n.Draining {
+				used := n.Done
+				if k == Source {
+					used = n.Spawned
+				}
+				list = append(list, cand{n.ID, used})
 			}
 		}
 	}
@@ -814,8 +861,14 @@ func (s *Sim) stepSources() {
 		return
 	}
 	for _, n := range s.Nodes {
-		if n.Kind != Source {
+		if n.Kind != Source || n.PatchUntil > s.Tick {
 			continue
+		}
+		if n.flood {
+			n.junkAcc += s.Cfg.HardMode.Security.DDoSRate * TickMs / 1000
+			for ; n.junkAcc >= 1000; n.junkAcc -= 1000 {
+				s.spawnJunk(n)
+			}
 		}
 		n.acc += s.Rate(n, s.Tick) * TickMs / 1000
 		for n.acc >= n.next {
@@ -968,6 +1021,10 @@ func (s *Sim) redisLink(l *Link, faults bool) bool {
 func (s *Sim) complete(r *Request, n *Node, ws bool) {
 	r.State, r.Stage = Completed, Finished
 	s.Active--
+	if r.junk() {
+		s.emit(Event{K: "done", Req: r.ID, Node: n.ID, A: (s.Tick - r.Born) * TickMs})
+		return
+	}
 	s.Completed++
 	n.Done++
 	s.perSec[s.Tick/TPS%len(s.perSec)]++
@@ -995,7 +1052,6 @@ func (s *Sim) complete(r *Request, n *Node, ws bool) {
 func (s *Sim) fail(r *Request, reason int, n *Node, l *Link) {
 	r.State = Failed
 	s.Active--
-	s.Failures[reason]++
 	for _, id := range r.Path {
 		if p := s.Link(id); p != nil {
 			p.Pending--
@@ -1004,19 +1060,31 @@ func (s *Sim) fail(r *Request, reason int, n *Node, l *Link) {
 	r.Path = nil
 	e := Event{K: "fail", Req: r.ID, A: reason, B: (s.Tick - r.Born) * TickMs}
 	if n != nil {
-		n.Fail[reason]++
 		e.Node = n.ID
 	}
 	if l != nil {
-		l.Fail[reason]++
 		e.Link = l.ID
+	}
+	// DDoS 가짜 요청은 실패해도 기록과 서비스 상태에 남지 않는다.
+	if r.junk() {
+		s.emit(e)
+		return
+	}
+	s.Failures[reason]++
+	if n != nil {
+		n.Fail[reason]++
+	}
+	if l != nil {
+		l.Fail[reason]++
 	}
 	penalty := s.Cfg.Health.FailPenalty
 	for _, f := range s.Faults {
 		if f.State == "active" {
 			f.FailedIn++
 			s.stat(f.Def.Type).Failed++
-			penalty = s.Cfg.Health.FailPenalty * s.Cfg.Health.FaultPercent / 100
+			if !security(f.Def.Type) {
+				penalty = s.Cfg.Health.FailPenalty * s.Cfg.Health.FaultPercent / 100
+			}
 		}
 	}
 	// 실패가 한꺼번에 몰려도 1초에 잃는 양에는 상한이 있어, 손쓸 틈 없이 무너지지 않는다. 0이면 상한이 없다.

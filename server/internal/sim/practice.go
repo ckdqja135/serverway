@@ -47,6 +47,11 @@ func (s *Sim) scene(c Command) error {
 		s.addFault(FaultDef{Type: "api_down", AtSec: s.Tick/TPS + 9, NoticeSec: 8, DurationSec: 8})
 	case "reward":
 		s.PhaseEnd = s.Tick + 1
+	case "hack", "leak", "ddos", "ransom":
+		if !s.Cfg.Hard {
+			return fmt.Errorf("하드 모드 튜토리얼에서만 쓸 수 있습니다")
+		}
+		s.addFault(s.securityDef(c.Kind, s.Tick/TPS+10, 9))
 	default:
 		return fmt.Errorf("알 수 없는 장면입니다")
 	}

@@ -7,7 +7,7 @@ const W = 1080, PAD = 56
 const KO = '"Gothic A1", sans-serif', NUM = '"Unbounded", "Gothic A1", sans-serif'
 
 // 기록에 붙는 표시. 결과 창, 기록 공유, 이미지가 같은 글을 쓴다.
-export const resultTag = (r: Result, g: GameClient) => (g.odd ? 'AI 등의 화면 어뷰징 의심' : g.chosen ? `시드 ${r.seed} 연습` : '')
+export const resultTag = (r: Result, g: GameClient) => (g.odd ? 'AI 등의 화면 어뷰징 의심' : [g.config.hard && '하드 모드', g.chosen && `시드 ${r.seed} 연습`].filter(Boolean).join(' · '))
 
 // 결과를 그림 한 장으로 그린다. 색은 지금 화면 모드를 따른다. 판이 세로로 길면 왼쪽에 판, 오른쪽에 기록을 둔다.
 async function draw(r: Result, g: GameClient, frame: Frame | undefined): Promise<Blob> {

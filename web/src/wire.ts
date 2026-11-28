@@ -1,7 +1,7 @@
 // 게임 규칙이 도는 곳과 주고받는 길. 보통은 브라우저 안의 워커이고, VITE_SERVER를 넣어 빌드하면 Go 서버다.
 export interface Wire { send(data: string): void; close(): void }
 interface Host {
-  create(seed: number, practice: boolean): Promise<string>
+  create(seed: number, practice: boolean, hard: boolean): Promise<string>
   exists(id: string): Promise<boolean>
   last(): string | null // 이어 할 수 있는 판
   open(id: string, onMessage: (m: any) => void, onClose: (ended: boolean) => void): Wire
@@ -11,8 +11,8 @@ export const LOCAL = !import.meta.env.VITE_SERVER
 
 const KEY = 'serverway.session'
 const server: Host = {
-  async create(seed, practice) {
-    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed, practice }) })
+  async create(seed, practice, hard) {
+    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed, practice, hard }) })
     const d = await r.json().catch(() => null)
     if (!d) throw new Error('게임 서버에 연결할 수 없습니다')
     if (!r.ok) throw new Error(d.error)
@@ -37,11 +37,11 @@ const spawn = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 
 // 시작 화면을 보는 동안 미리 받아 둔다.
 let spare: Worker | null = LOCAL ? spawn() : null
 
-const games = new Map<string, { seed: number; practice: boolean }>()
+const games = new Map<string, { seed: number; practice: boolean; hard: boolean }>()
 const local: Host = {
-  async create(seed, practice) {
+  async create(seed, practice, hard) {
     const id = `${Date.now()}`
-    games.set(id, { seed, practice })
+    games.set(id, { seed, practice, hard })
     return id
   },
   exists: async (id) => games.has(id) || read()?.id === id,

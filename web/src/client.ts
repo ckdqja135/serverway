@@ -1,4 +1,4 @@
-import { FAIL, nodeName, perSec, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type NewsItem, type Opened, type Result } from './types'
+import { FAIL, nodeName, perSec, type Threat, type Ack, type Config, type GEvent, type GLink, type GNode, type Head, type NewsItem, type Opened, type Result } from './types'
 import { sfx, type Sfx } from './sound'
 import { command, odd, strangeCommand, watchGame, watchReset } from './watch'
 import { LOCAL, host, type Wire } from './wire'
@@ -11,6 +11,7 @@ export type Status = 'connecting' | 'open' | 'lost' | 'ended'
 const MAX_FX = 120
 const DID: Record<string, Sfx> = { link: 'link', build: 'build', upgradeNode: 'up', upgradeLink: 'up', storage: 'up', websocket: 'up', removeLink: 'remove', removeNode: 'remove' } // 명령이 받아들여졌을 때의 소리
 const MAX_LOG = 60
+const BLOCKED: Record<Threat, string> = { hack: '보안 패치로 해킹을 막았습니다', leak: '보안 패치로 데이터 유출을 막았습니다', ddos: '차단 설정으로 DDoS를 막았습니다', ransom: '보안 패치로 랜섬웨어를 막았습니다' }
 // 요청 로그에 보이는 API. 요청 번호로 골라 같은 요청은 늘 같은 줄로 보인다. 표시만 바꾸며 게임 결과와는 상관없다.
 const APIS = [
   'GET /products', 'GET /products/:id', 'GET /search', 'GET /cart', 'POST /cart', 'PUT /cart/:id', 'DELETE /cart/:id', 'POST /orders', 'GET /orders/:id',
@@ -18,7 +19,10 @@ const APIS = [
   'DELETE /session', 'GET /feed', 'GET /reviews', 'POST /reviews', 'PUT /reviews/:id', 'DELETE /likes/:id', 'GET /alerts', 'PATCH /alerts/:id',
   'GET /coupons', 'POST /uploads',
 ]
+// DDoS 가짜 요청(번호가 음수)은 봇이 두드리는 주소로 보인다.
+const BOTS = ['GET /', 'POST /login', 'GET /.env', 'GET /admin', 'POST /search', 'GET /wp-admin']
 const api = (r = 0) => {
+  if (r < 0) return `봇 ${BOTS[-r % BOTS.length]}`
   let h = Math.imul(r ^ (r >>> 16), 0x45d9f3b)
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
   h = (h ^ (h >>> 16)) >>> 0
@@ -80,8 +84,8 @@ export class GameClient {
 
   constructor(readonly id: string) { watchGame(id); this.open() }
 
-  static async create(seed?: number, practice = false): Promise<string> {
-    return host.create(seed ?? 0, practice)
+  static async create(seed?: number, practice = false, hard = false): Promise<string> {
+    return host.create(seed ?? 0, practice, hard)
   }
   static exists(id: string) { return host.exists(id) }
 
@@ -259,8 +263,8 @@ export class GameClient {
       case 'in': this.dropDot(e.r!); break
       case 'done':
         this.dropDot(e.r!)
-        sfx('done')
-        if (node) this.addFx({ kind: 'done', x: node.x, y: node.y, at: now })
+        if (e.r! > 0) sfx('done')
+        if (node && e.r! > 0) this.addFx({ kind: 'done', x: node.x, y: node.y, at: now })
         this.log(e.at, 200, `${api(e.r)} ${((e.a ?? 0) / 1000).toFixed(1)}s`)
         break
       case 'cache': if (node) this.addFx({ kind: 'cache', x: node.x, y: node.y, at: now, text: '캐시' }); break
@@ -268,6 +272,7 @@ export class GameClient {
         const d = this.dropDot(e.r!)
         const at = d ? this.dotPos(d) : null
         const f = FAIL[e.a ?? 0]
+        if (e.r! < 0) { this.log(e.at, f.code, `${api(e.r)} ${f.name}`); break } // 가짜 요청의 실패는 피해가 없다
         sfx('fail')
         if (at) this.addFx({ kind: 'fail', x: at.x, y: at.y, at: now, text: String(f.code) })
         else if (node) this.addFx({ kind: 'fail', x: node.x, y: node.y, at: now, text: String(f.code) })
@@ -276,7 +281,8 @@ export class GameClient {
       }
       case 'fault':
         if (e.t === 'notice' || e.t === 'active') sfx('alert')
-        if (e.t === 'ended') { sfx('recover'); this.say('장애가 복구되었습니다') }
+        if (e.t === 'ended') { sfx('recover'); this.say(e.s ? '보안 사고가 끝났습니다' : '장애가 복구되었습니다') }
+        if (e.t === 'paid') { sfx('recover'); this.say('몸값을 내고 DB 잠금을 풀었습니다') }
         if (e.t === 'canceled') this.say('장애 대상이 사라져 이번 장애는 지나갔습니다')
         break
       case 'store':
@@ -284,6 +290,14 @@ export class GameClient {
         if (e.a !== 100) sfx('alert')
         this.say(e.a === 100 ? `${nodeName(node)}의 저장 공간이 가득 차서 느려졌습니다` : `${nodeName(node)}의 저장 공간이 ${e.a}% 찼습니다`, e.a === 100)
         break
+      case 'sec': {
+        const t = e.t as Threat
+        if (e.s) { sfx('recover'); this.say(BLOCKED[t]); break }
+        if (t === 'hack' && node) this.addFx({ kind: 'fail', x: node.x, y: node.y, at: now, text: `-${e.b}` })
+        this.say(t === 'hack' ? `해킹당해 예산을 ${e.b ?? 0} 빼앗겼습니다` : t === 'leak' ? `데이터가 유출되어 서비스 상태가 ${(e.b ?? 0) / 1000}% 줄었습니다`
+          : t === 'ddos' ? 'DDoS 공격이 시작되었습니다. 가짜 요청이 쏟아집니다' : '랜섬웨어가 DB를 잠갔습니다. 잠긴 DB를 눌러 몸값을 내거나 풀릴 때까지 버티세요', true)
+        break
+      }
       case 'source': sfx('source'); this.say('새 클라이언트가 들어왔습니다. 서버로 연결하세요'); break
     }
   }

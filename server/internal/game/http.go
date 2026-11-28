@@ -32,12 +32,13 @@ func Handler(m *Manager, webDir string) http.Handler {
 		var in struct {
 			Seed     uint64 `json:"seed"`
 			Practice bool   `json:"practice"`
+			Hard     bool   `json:"hard"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "요청을 읽을 수 없습니다"})
 			return
 		}
-		s, err := m.Create(in.Seed%1000000, in.Practice)
+		s, err := m.Create(in.Seed%1000000, in.Practice, in.Hard)
 		if err != nil {
 			writeJSON(w, 503, map[string]string{"error": err.Error()})
 			return
@@ -60,7 +61,7 @@ func Handler(m *Manager, webDir string) http.Handler {
 		}
 		ch := make(chan any, 1)
 		if !post(r.Context(), s.calls, func() {
-			ch <- map[string]any{"seed": s.sim.Seed, "rules": s.sim.Cfg.Rules, "tick": s.sim.Tick, "score": s.sim.Score, "log": append([]sim.LogEntry{}, s.sim.Log...)}
+			ch <- map[string]any{"seed": s.sim.Seed, "rules": s.sim.Cfg.Rules, "hard": s.sim.Cfg.Hard, "tick": s.sim.Tick, "score": s.sim.Score, "log": append([]sim.LogEntry{}, s.sim.Log...)}
 		}) {
 			writeJSON(w, 503, map[string]string{"error": "잠시 후 다시 시도하세요"})
 			return

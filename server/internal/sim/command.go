@@ -5,7 +5,7 @@ import "fmt"
 type Command struct {
 	Seq   int64  `json:"seq"`
 	Type  string `json:"type"`
-	Kind  string `json:"kind,omitempty"` // build: api(기본), db, redis, scene: source, traffic, fault, reward
+	Kind  string `json:"kind,omitempty"` // build: api(기본), db, redis, scene: source, traffic, fault, reward, 하드 모드 튜토리얼의 hack, leak, ddos, ransom
 	X     int    `json:"x,omitempty"`
 	Y     int    `json:"y,omitempty"`
 	From  int    `json:"from,omitempty"`
@@ -120,6 +120,10 @@ func (s *Sim) exec(c Command) (int, error) {
 		return c.ID, s.removeLink(c.ID)
 	case "removeNode":
 		return c.ID, s.removeNode(c.ID)
+	case "patch":
+		return c.ID, s.patch(c.ID)
+	case "ransom":
+		return c.ID, s.ransom(c.ID)
 	case "reward":
 		return 0, s.reward(c.Index)
 	case "scene":
@@ -214,12 +218,17 @@ func (s *Sim) connect(from, to int) (int, error) {
 	if err := s.pay(cost); err != nil {
 		return 0, err
 	}
+	return s.link(a, b, cost).ID, nil
+}
+
+func (s *Sim) link(a, b *Node, paid int) *Link {
 	s.nextID++
 	n := cells(a.X, a.Y, b.X, b.Y)
 	travel := max(1, (n*TPS+s.Cfg.Link.CellsPerSec-1)/s.Cfg.Link.CellsPerSec)
-	s.Links = append(s.Links, &Link{ID: s.nextID, From: from, To: to, Paid: cost, Cells: n, Travel: travel})
+	l := &Link{ID: s.nextID, From: a.ID, To: b.ID, Paid: paid, Cells: n, Travel: travel}
+	s.Links = append(s.Links, l)
 	s.reindex()
-	return s.nextID, nil
+	return l
 }
 
 func (s *Sim) upgradeNode(id int) error {

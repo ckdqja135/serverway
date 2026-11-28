@@ -6,6 +6,7 @@ import "sort"
 type Bot struct {
 	Link, API, DB, LinkUp, Reroute, Prepare bool
 	Storage, Redis, WS                      bool // 성장 단계에서 열리는 것
+	Patch                                   bool // 하드 모드: 보안 사고 예고를 받으면 패치하고, 잠긴 DB는 몸값을 낸다
 
 	seq int64
 }
@@ -48,6 +49,15 @@ func (b *Bot) Act(s *Sim) {
 			}
 		}
 		b.do(s, Command{Type: "reward", Index: at})
+	}
+	if b.Patch {
+		for _, f := range s.Faults {
+			if f.State == "notice" && security(f.Def.Type) && !f.Patched {
+				b.do(s, Command{Type: "patch", ID: f.Node})
+			} else if f.State == "active" && f.Def.Type == "ransom" {
+				b.do(s, Command{Type: "ransom", ID: f.Node})
+			}
+		}
 	}
 	if !b.Link {
 		return

@@ -25,14 +25,11 @@ func main() {
 	var first struct {
 		Seed     uint64     `json:"seed"`
 		Practice bool       `json:"practice"`
+		Hard     bool       `json:"hard"`
 		Save     *game.Save `json:"save"`
 	}
 	json.Unmarshal([]byte(<-in), &first)
-	cfg := sim.Default()
-	if first.Practice {
-		cfg = sim.Practice(cfg)
-	}
-	g, err := game.OpenLocal(ctx, cfg, first.Seed, first.Save)
+	g, err := game.OpenLocal(ctx, game.Mode(sim.Default(), first.Practice, first.Hard), first.Seed, first.Save)
 	if err != nil {
 		post(`{"type":"ended"}`)
 		return

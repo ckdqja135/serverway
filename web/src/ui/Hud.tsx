@@ -1,6 +1,6 @@
-import { Activity, Coins, FastForward, Gauge, HeartPulse, Pause, Play, Settings, Star, Timer, TriangleAlert } from 'lucide-react'
+import { Activity, Coins, FastForward, Gauge, HeartPulse, Pause, Play, Settings, ShieldAlert, ShieldCheck, Star, Timer, TriangleAlert } from 'lucide-react'
 import type { GameClient } from '../client'
-import { FAULT_TEXT, clockText, nodeName, revenueText, type Fault } from '../types'
+import { FAULT_TEXT, clockText, isThreat, nodeName, revenueText, type Fault } from '../types'
 
 export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void; onFocus: (f: Fault) => void }) {
   const { head: h, config: c } = g
@@ -13,7 +13,7 @@ export function Hud({ g, onMenu, onFocus }: { g: GameClient; onMenu: () => void;
     <>
       {!c.practice && <div className="rail" role="progressbar" aria-label={`다음 보상까지 ${left}초`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(prog * 100)}><i style={{ width: `${prog * 100}%` }} /></div>}
       <div className="hud">
-        <div className="word">{c.practice ? '튜토리얼' : h.rankName}<small>{c.practice ? '연습 중' : <>{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}{g.chosen && ' (연습)'}</>}</small></div>
+        <div className="word">{c.practice ? (c.hard ? '보안 튜토리얼' : '튜토리얼') : h.rankName}<small>{c.practice ? '연습 중' : <>{c.hard && '하드 모드, '}{h.nextRank ? `다음 단계까지 ${(h.nextRank - h.completed).toLocaleString()}건` : '최고 단계'}, 시드 {g.seed}{g.chosen && ' (연습)'}</>}</small></div>
         <div className="stats">
           <Stat icon={<Star size={17} />} id="points" label="점수" value={h.score.toLocaleString()} />
           <div className={`stat health ${tone}`}>
@@ -49,10 +49,12 @@ function FaultAlert({ f, g, onFocus }: { f: Fault; g: GameClient; onFocus: (f: F
   const l = f.link ? g.links.get(f.link) : undefined
   const ends = l && [g.nodes.get(l.from), g.nodes.get(l.to)]
   const target = n ? nodeName(n) : ends?.[0] && ends[1] ? `${nodeName(ends[0])}에서 ${nodeName(ends[1])} 링크` : '대상'
+  const threat = isThreat(f.type), long = f.endAt > f.startAt // 해킹과 유출은 한 번에 끝난다
+  const how = active ? `${left}초 남음` : long ? `${Math.round((f.endAt - f.startAt) / g.config.tps)}초 동안` : ''
   return (
-    <button className={`fault ${active ? 'active' : ''}`} onClick={() => onFocus(f)}>
-      <TriangleAlert size={18} aria-hidden />
-      <span><b>{active ? `${t.title} 진행 중` : `${left}초 뒤 ${t.title}`}</b>{target}: {t.effect(f)}, {active ? `${left}초 남음` : `${Math.round((f.endAt - f.startAt) / g.config.tps)}초 동안`}{!active && <em>{t.tip}</em>}</span>
+    <button className={`fault ${active ? 'active' : ''} ${threat ? 'threat' : ''} ${f.patched ? 'ready' : ''}`} onClick={() => onFocus(f)}>
+      {f.patched ? <ShieldCheck size={18} aria-hidden /> : threat ? <ShieldAlert size={18} aria-hidden /> : <TriangleAlert size={18} aria-hidden />}
+      <span><b>{active ? `${t.title} 진행 중` : `${left}초 뒤 ${t.title}`}</b>{target}: {t.effect(f)}{how && `, ${how}`}{!active && <em>{f.patched ? '보안 패치를 마쳐 막을 수 있습니다' : t.tip}</em>}</span>
     </button>
   )
 }

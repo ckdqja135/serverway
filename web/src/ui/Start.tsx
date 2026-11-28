@@ -1,13 +1,15 @@
-import { Dices, GraduationCap, Play, RotateCw, Trophy } from 'lucide-react'
+import { Dices, GraduationCap, Lock, Play, RotateCw, ShieldAlert, Trophy } from 'lucide-react'
 import { useState } from 'react'
-import { clockText, loadBest } from '../types'
+import type { Mode } from '../App'
+import { HARD_UNLOCK, clockText, hardOpen, loadBest } from '../types'
 import { learned } from './Lesson'
 import { Toggles } from './Toggles'
 import { useFit } from './fit'
 
-export function Start({ onStart, resume, busy, error }: { onStart: (seed?: number, practice?: boolean) => void; resume: (() => void) | null; busy: boolean; error: string }) {
+export function Start({ onStart, resume, busy, error }: { onStart: (seed?: number, mode?: Mode) => void; resume: (() => void) | null; busy: boolean; error: string }) {
   const [seed, setSeed] = useState('')
-  const best = loadBest(), fit = useFit()
+  const best = loadBest(), hardBest = loadBest(true), open = hardOpen(), fit = useFit()
+  const go = (mode?: Mode) => onStart(Number(seed) || undefined, mode)
   return (
     <div className="start">
       <div ref={fit} className="startcard">
@@ -16,13 +18,20 @@ export function Start({ onStart, resume, busy, error }: { onStart: (seed?: numbe
         <h1>Serverway</h1>
         <p className="tag">트래픽 하나가 오가는 작은 서버에서 시작해<br />감당할 수 있을 때까지 끝없이 키워 보세요.</p>
         {best && <p className="best"><Trophy size={16} aria-hidden />최고 기록 {best.score.toLocaleString()}점, {clockText(best.seconds)}, {best.rank}</p>}
+        {hardBest && <p className="best hard"><ShieldAlert size={16} aria-hidden />하드 모드 {hardBest.score.toLocaleString()}점, {clockText(hardBest.seconds)}, {hardBest.rank}</p>}
         </div>
         <div className="starts">
         <div className="row">
           {resume && <button className="big" onClick={resume}><RotateCw size={18} aria-hidden />이어서 하기</button>}
-          <button className="big primary" disabled={busy} onClick={() => onStart(Number(seed) || undefined)}><Play size={18} aria-hidden />새 게임</button>
-          {learned() && <button className="big" disabled={busy} onClick={() => onStart(Number(seed) || undefined, true)}><GraduationCap size={18} aria-hidden />튜토리얼</button>}
+          <button className="big primary" disabled={busy} onClick={() => go()}><Play size={18} aria-hidden />새 게임</button>
+          {learned() && <button className="big" disabled={busy} onClick={() => go('tutorial')}><GraduationCap size={18} aria-hidden />튜토리얼</button>}
         </div>
+        {/* 하드 모드는 일반 모드에서 정해진 점수를 넘겨야 열리고, 처음 들어가면 보안 튜토리얼부터 한다. */}
+        <div className="row">
+          <button className="big hardmode" disabled={busy || !open} onClick={() => go('hard')}>{open ? <ShieldAlert size={18} aria-hidden /> : <Lock size={18} aria-hidden />}하드 모드</button>
+          {open && learned(true) && <button className="big" disabled={busy} onClick={() => go('hardTutorial')}><GraduationCap size={18} aria-hidden />보안 튜토리얼</button>}
+        </div>
+        {!open && <p className="fine">일반 모드에서 {HARD_UNLOCK.toLocaleString()}점을 넘기면 하드 모드가 열립니다{best ? ` (지금 최고 ${best.score.toLocaleString()}점)` : ''}.</p>}
         <Toggles />
         {!learned() && <p className="fine">처음에는 튜토리얼부터 시작합니다. 언제든 건너뛸 수 있습니다.</p>}
         <label className="seed"><Dices size={15} aria-hidden />시드

@@ -1,7 +1,7 @@
-import { ArrowUp, Cable, HardDrive, Trash2, X } from 'lucide-react'
+import { ArrowUp, Cable, HardDrive, KeyRound, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
-import { API, CACHE, DB, FAIL, SOURCE, nodeName, perSec, type GLink, type GNode, type Selection } from '../types'
+import { API, CACHE, DB, FAIL, FAULT_TEXT, SOURCE, isThreat, nodeName, perSec, type GLink, type GNode, type Selection } from '../types'
 
 export function Panel({ g, sel, onClose, confirm, setConfirm }: { g: GameClient; sel: Selection; onClose: () => void; confirm: boolean; setConfirm: (b: boolean) => void }) {
   const n = sel?.type === 'node' ? g.nodes.get(sel.id) : undefined
@@ -28,11 +28,11 @@ function Meter({ label, value, max, tone }: { label: string; value: number; max:
   return <div className="meter"><span>{label}<b>{value} / {max}</b></span><div className="bar"><i className={p >= 0.8 ? 'bad' : p >= 0.5 ? 'warn' : tone} style={{ width: `${p * 100}%` }} /></div></div>
 }
 
-function Upgrade({ g, cost, level, title, icon, onClick, gains }: { g: GameClient; cost: number; level?: number; title?: string; icon?: ReactNode; onClick: () => void; gains: [string, string][] }) {
+function Upgrade({ g, cost, level, title, icon, onClick, gains, tone }: { g: GameClient; cost: number; level?: number; title?: string; icon?: ReactNode; onClick: () => void; gains: [string, string][]; tone?: string }) {
   const [busy, setBusy] = useState(false)
   const short = cost - g.head.budget
   return (
-    <button className={`upgrade ${title ? 'second' : ''}`} disabled={short > 0 || busy || !!g.head.over} onClick={() => { setBusy(true); onClick(); setTimeout(() => setBusy(false), 250) }}>
+    <button className={`upgrade ${tone ?? (title ? 'second' : '')}`} disabled={short > 0 || busy || !!g.head.over} onClick={() => { setBusy(true); onClick(); setTimeout(() => setBusy(false), 250) }}>
       {icon ?? <ArrowUp size={17} aria-hidden />}<b>{title ?? `Lv${level! + 2}로 업그레이드`}</b><em>{short > 0 ? `${short} 부족` : cost}</em>
       <span className="gains">{gains.map(([k, v]) => <span key={k}><small>{k}</small>{v}</span>)}</span>
     </button>
@@ -43,7 +43,8 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
   if (n.kind === SOURCE) return (
     <>
       <h2 className="coral">{nodeName(n)}</h2>
-      <p className="muted">요청을 만들고, 응답이 돌아오면 완료됩니다.</p>
+      <Secure g={g} n={n} />
+      <p className="muted">{n.patchEnd ? 'DDoS 차단을 설정하는 동안 요청을 보내지 않습니다.' : '요청을 만들고, 응답이 돌아오면 완료됩니다.'}</p>
       <Meter label="나가지 못한 요청" value={n.queue} max={n.limit} tone="coral" />
       <dl><Row k="지금 트래픽" v={`초당 ${(n.rate / 1000).toFixed(1)}개`} /><Row k="30초 뒤" v={`초당 ${(n.nextRate / 1000).toFixed(1)}개`} w={n.nextRate > n.rate * 1.15} /><Row k="완료" v={n.done} /><Row k="연결 상태" v={n.routed ? '완료까지 이어짐' : '길이 없음'} w={!n.routed} /></dl>
     </>
@@ -55,12 +56,13 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
   return (
     <>
       <h2 className={n.kind === DB ? 'mint' : n.kind === CACHE ? 'violet' : 'peri'}>{nodeName(n)} <small>Lv{n.level + 1}</small></h2>
-      {/* 업그레이드는 제목 바로 아래에 두어 어느 노드를 골라도 같은 자리에 있게 한다. */}
+      <Secure g={g} n={n} />
+      {/* 업그레이드는 제목 바로 아래에 두어 어느 노드를 골라도 같은 자리에 있게 한다. 보안 사고에 대응할 일이 있으면 그보다 먼저 보인다. */}
       {!n.draining && <Upgrade g={g} cost={n.upgrade} level={n.level} onClick={() => g.send('upgradeNode', { id: n.id })}
         gains={n.next ? [['초당 처리', `${perSec(n)} → ${perSec(n.next)}`], n.kind === CACHE ? ['적중률', `${n.hit}% → ${n.next.hit}%`] : ['대기열', `${n.limit} → ${n.next.limit}`]] : []} />}
       {!n.draining && st && <Upgrade g={g} cost={st.cost} title="저장 공간 늘리기" icon={<HardDrive size={17} aria-hidden />} onClick={() => g.send('storage', { id: n.id })} gains={[['저장 공간', `${st.cap.toLocaleString()} → ${st.next.toLocaleString()}`]]} />}
       <p className={(n.state === 'full' && !stuck) || full ? 'bad' : 'muted'}>
-        {n.state === 'down' ? '장애로 멈춰 있습니다.' : n.state === 'slow' ? `장애로 처리 속도가 ${n.speed}%입니다.`
+        {n.patchEnd ? '보안 패치 중이라 잠시 멈춰 있습니다.' : n.state === 'down' ? (locked(g, n) ? '랜섬웨어로 잠겨 있습니다.' : '장애로 멈춰 있습니다.') : n.state === 'slow' ? `장애로 처리 속도가 ${n.speed}%입니다.`
           : stuck ? '처리는 끝났지만 다음으로 보낼 길이 막혔습니다. 원인은 이 앞쪽입니다.' : n.state === 'full' ? '이곳이 병목입니다. 처리 용량이 부족합니다.'
             : full ? `저장 공간이 가득 차서 속도가 ${g.config.storageSlow}%입니다.` : n.state === 'busy' ? '대기열이 쌓이고 있습니다.' : '여유가 있습니다.'}
       </p>
@@ -77,6 +79,19 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
       </dl>
     </>
   )
+}
+
+const locked = (g: GameClient, n: GNode) => g.head.faults.find((f) => f.node === n.id && f.state === 'active' && f.type === 'ransom')
+
+// Secure는 하드 모드의 보안 사고에 대응하는 버튼이다. 공격 예고를 받은 곳은 패치하고, 잠긴 DB는 몸값을 내고 푼다.
+function Secure({ g, n }: { g: GameClient; n: GNode }) {
+  const threat = g.head.faults.find((f) => f.node === n.id && f.state === 'notice' && isThreat(f.type) && !f.patched)
+  const lock = locked(g, n), sec = g.config.patchSec
+  if (threat) return <Upgrade g={g} cost={g.head.patchCost ?? 0} tone="secure" title={n.kind === SOURCE ? 'DDoS 차단 설정' : '보안 패치'} icon={<ShieldCheck size={17} aria-hidden />}
+    onClick={() => g.send('patch', { id: n.id })} gains={[['막는 공격', FAULT_TEXT[threat.type].title], ['그동안', n.kind === SOURCE ? `${sec}초 요청 멈춤` : `${sec}초 처리 멈춤`]]} />
+  if (lock) return <Upgrade g={g} cost={g.head.ransomCost ?? 0} tone="secure" title="몸값 내고 잠금 풀기" icon={<KeyRound size={17} aria-hidden />}
+    onClick={() => g.send('ransom', { id: n.id })} gains={[['내지 않으면', `${Math.max(0, Math.ceil((lock.endAt - g.head.tick) / g.config.tps))}초 더 잠김`]]} />
+  return null
 }
 
 function LinkInfo({ g, l }: { g: GameClient; l: GLink }) {

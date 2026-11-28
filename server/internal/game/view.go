@@ -44,6 +44,7 @@ type nodeView struct {
 	Routed   bool       `json:"routed"`          // 클라이언트: 완료까지 이어지는 길이 있는지
 	Hit      int        `json:"hit"`             // Redis: 적중률
 	Store    *storeView `json:"store,omitempty"` // DB: 저장 공간. 열리기 전에는 없다
+	PatchEnd int        `json:"patchEnd,omitempty"` // 하드 모드: 보안 패치가 끝나는 틱. 패치 중일 때만 있다
 }
 
 type storeView struct {
@@ -124,6 +125,7 @@ type faultView struct {
 	EndAt    int    `json:"endAt"`
 	Percent  int    `json:"percent"`
 	FailedIn int    `json:"failedIn"`
+	Patched  bool   `json:"patched,omitempty"` // 하드 모드: 보안 패치를 마쳐 막을 예정
 }
 
 type upcoming struct {
@@ -171,6 +173,8 @@ type head struct {
 	Cache     int         `json:"cache"`
 	Deadline  int         `json:"deadline"`
 	Why       string      `json:"pauseReason"`
+	Patch     int         `json:"patchCost,omitempty"`  // 하드 모드: 보안 패치 비용
+	Ransom    int         `json:"ransomCost,omitempty"` // 하드 모드: 랜섬웨어 몸값
 }
 
 // openView는 성장 단계에서 열린 기능이다.
@@ -225,6 +229,9 @@ func makeHead(s *sim.Sim, why string) head {
 	h.Mul, h.Interest, h.Bonus = s.RevenueMul(), s.Cfg.InterestPercent, bonusView(s.Bonus)
 	u := s.Cfg.Unlock
 	h.Open = openView{s.Unlocked(u.Storage), s.Unlocked(u.Redis), s.Unlocked(u.WebSocket)}
+	if s.Cfg.Hard {
+		h.Patch, h.Ransom = s.PatchCost(), s.RansomCost()
+	}
 	h.Rank, h.RankName = s.Rank()
 	if h.Rank+1 < len(s.Cfg.Ranks) {
 		h.NextRank = s.Cfg.Ranks[h.Rank+1].At
@@ -323,7 +330,7 @@ func faults(s *sim.Sim) []faultView {
 		if f.State != "notice" && f.State != "active" {
 			continue
 		}
-		out = append(out, faultView{f.ID, f.Def.Type, f.State, f.Node, f.Link, f.StartAt, f.EndAt, f.Def.Percent, f.FailedIn})
+		out = append(out, faultView{f.ID, f.Def.Type, f.State, f.Node, f.Link, f.StartAt, f.EndAt, f.Def.Percent, f.FailedIn, f.Patched})
 	}
 	return out
 }
@@ -341,6 +348,9 @@ func makeNode(s *sim.Sim, n *sim.Node) nodeView {
 			end = 0
 		}
 		v.Jobs = append(v.Jobs, jobView{j.Req.ID, j.Start, end, j.Done})
+	}
+	if n.PatchUntil > s.Tick {
+		v.PatchEnd = n.PatchUntil
 	}
 	switch {
 	case n.Kind != sim.Source && n.Speed == 0:

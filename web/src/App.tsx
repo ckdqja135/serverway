@@ -2,7 +2,7 @@ import { Database, DatabaseZap, Hexagon, Maximize2, MousePointer2, Play, ScrollT
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Board, type Hint } from './board'
 import { GameClient } from './client'
-import { API, CACHE, DB, SOURCE, nodeName, type Fault, type Selection, type Tool } from './types'
+import { API, CACHE, DB, FAULT_TEXT, SOURCE, isThreat, nodeName, type Fault, type Selection, type Tool } from './types'
 import { Boosts, News } from './ui/Growth'
 import { Hud } from './ui/Hud'
 import { Help, Menu, ResultModal, RewardModal } from './ui/Overlays'
@@ -28,20 +28,25 @@ export function App() {
   }
   useEffect(() => { check() }, [])
 
-  // 튜토리얼을 한 번이라도 끝냈거나 건너뛰었으면 바로 본 게임을 시작한다.
-  const start = async (s?: number, practice = !learned()) => {
+  // 튜토리얼을 한 번이라도 끝냈거나 건너뛰었으면 바로 본 게임을 시작한다. 하드 모드도 처음에는 보안 튜토리얼부터 한다.
+  const start = async (s?: number, mode: Mode = 'normal') => {
     if (busy) return
+    const hard = mode === 'hard' || mode === 'hardTutorial'
+    const practice = mode === 'tutorial' || mode === 'hardTutorial' || !learned(hard)
     setBusy(true); setError(''); setSeed(s)
     try {
-      const id = await GameClient.create(s, practice)
+      const id = await GameClient.create(s, practice, hard)
       setGame(new GameClient(id))
     } catch (e) { setGame(null); setError((e as Error).message || '게임 서버에 연결할 수 없습니다') } finally { setBusy(false) }
   }
   if (!game) return <Start onStart={start} busy={busy} error={error} resume={resumeId ? () => setGame(new GameClient(resumeId)) : null} />
-  return <Play1 key={game.id} g={game} onHome={() => { game.close(); setGame(null); check() }} onLearned={() => { setLearned(); start(seed, false) }} />
+  return <Play1 key={game.id} g={game} onHome={() => { game.close(); setGame(null); check() }} onLearned={(hard) => { setLearned(hard); start(seed, hard ? 'hard' : 'normal') }} />
 }
 
-function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; onLearned: () => void }) {
+export type Mode = 'normal' | 'tutorial' | 'hard' | 'hardTutorial'
+
+function Play1({ g, onHome, onLearned: learnedAs }: { g: GameClient; onHome: () => void; onLearned: (hard: boolean) => void }) {
+  const onLearned = () => learnedAs(!!g.config?.hard)
   useSyncExternalStore(g.subscribe, g.getVersion)
   const cv = useRef<HTMLCanvasElement>(null)
   const board = useRef<Board | null>(null)
@@ -177,8 +182,8 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
         {!held && <RewardModal g={g} />}
         <ResultModal g={g} onHome={onHome} onRestart={restart} frame={() => board.current?.frame()} />
         {lesson && !overlay && <LessonCard g={g} lesson={lesson} onSkip={onLearned} />}
-        {lesson?.stage === 'intro' && <LessonIntro onNext={lesson.next} onSkip={onLearned} />}
-        {lesson?.stage === 'end' && <LessonEnd onDone={onLearned} onHome={() => { setLearned(); onHome() }} />}
+        {lesson?.stage === 'intro' && <LessonIntro hard={lesson.hard} onNext={lesson.next} onSkip={onLearned} />}
+        {lesson?.stage === 'end' && <LessonEnd hard={lesson.hard} onDone={onLearned} onHome={() => { setLearned(lesson.hard); onHome() }} />}
         {menu && <Menu g={g} onSkip={onLearned} onClose={() => setMenu(false)} onHome={onHome} onRestart={restart} tutorial={tutorial} setTutorial={setTutorial} log={log} setLog={setLog} onHelp={() => { setMenu(false); setHelp(true) }} />}
         {help && <Help g={g} onClose={() => setHelp(false)} />}
         {!held && <News g={g} onClose={closeNews} />}
@@ -218,7 +223,9 @@ function useTutorial(g: GameClient): Step | null {
     if (!linked(API, DB)) return { text: '이번에는 서버에서 DB(초록 원판)로 끌어 연결하세요. 요청은 DB까지 다녀와야 합니다.', hint: pair(API, DB) }
     if (!h.started) return { text: '길이 완성됐습니다. 시작을 누르면 첫 트래픽이 출발합니다.' }
     if (h.completed < 2) return { text: '동그라미는 나가는 요청, 초록 네모는 돌아오는 응답입니다. 클라이언트에 돌아오면 완료입니다.' }
-    if (h.faults.some((f) => f.state === 'notice') && !seen.fault) return { text: '장애가 예고됐습니다. 다른 서버를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
+    const threat = h.faults.find((f) => f.state === 'notice' && isThreat(f.type) && !f.patched)
+    if (threat && !seen[`sec${threat.id}`]) return { text: `${FAULT_TEXT[threat.type].title} 예고: 보라색 점선이 공격받을 곳입니다. 눌러서 ${threat.type === 'ddos' ? 'DDoS 차단 설정을' : '보안 패치를'} 하세요.`, hint: threat.node ? { node: threat.node } : undefined, done: ok(`sec${threat.id}`) }
+    if (h.faults.some((f) => f.state === 'notice' && !isThreat(f.type)) && !seen.fault) return { text: '장애가 예고됐습니다. 다른 서버를 키우거나 우회 링크를 만들어 두세요.', done: ok('fault') }
     const lone = nodes.find((n) => n.kind === SOURCE && !n.routed)
     if (lone) return { text: `아직 연결되지 않은 클라이언트가 있습니다 (클라이언트 ${lone.index}). 가까운 서버로 끌어 연결하세요.` }
     const server = nodes.find((n) => n.kind !== SOURCE && (n.state === 'busy' || n.state === 'full') && !(n.stuck > 0 && n.stuck >= n.slots))

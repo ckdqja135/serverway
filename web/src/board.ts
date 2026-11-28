@@ -1,6 +1,8 @@
 import type { Dot, GameClient } from './client'
 import { getPref } from './prefs'
-import { API, CACHE, DB, SOURCE, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
+import { API, CACHE, DB, SOURCE, isThreat, nodeName, type GLink, type GNode, type Selection, type Tool, type Area } from './types'
+
+const THREAT_NAME: Record<string, string> = { hack: '해킹', leak: '유출', ddos: 'DDoS', ransom: '랜섬웨어' }
 
 const LIGHT = {
   paper: '#e9ecf7', area: '#f7f8fd', edge: '#d5daee', dot: '#cfd5ea', ink: '#2a2d4f', sub: '#6b7095', shade: 'rgba(52,58,110,0.10)',
@@ -431,7 +433,8 @@ export class Board {
         if (d.id % skip) return
         const q = this.at(p, d.lane ? 1 - d.p : d.p, this.offset(l, d.lane, d.strand))
         const X = this.sx(q.x), Y = this.sy(q.y), r = S * 0.105
-        const col = d.stage === 0 ? C.coral : d.stage === 1 ? (this.game.nodes.get(l.to)?.kind === CACHE ? C.violet : C.peri) : C.mint
+        // DDoS 가짜 요청(번호가 음수)은 회색이다.
+        const col = d.id < 0 ? C.sub : d.stage === 0 ? C.coral : d.stage === 1 ? (this.game.nodes.get(l.to)?.kind === CACHE ? C.violet : C.peri) : C.mint
         g.globalAlpha = 0.28
         g.fillStyle = col
         g.beginPath(); g.arc(X, Y, r * 1.9, 0, 7); g.fill()
@@ -687,9 +690,11 @@ export class Board {
       const at = n ? { x: n.x, y: n.y } : p ? this.at(p, 0.5, 0) : null
       if (!at) continue
       const x = this.sx(at.x), y = this.sy(at.y), r = n ? (this.radius(n) + 0.42) * S : S * 0.75
-      const active = f.state === 'active'
+      const active = f.state === 'active', threat = isThreat(f.type)
       const left = Math.max(0, Math.ceil(((active ? f.endAt : f.startAt) - this.game.rt) / this.game.config.tps))
-      g.strokeStyle = active ? C.red : C.amber
+      // 보안 사고 예고는 보라색이고, 패치를 마쳐 막을 예정이면 초록색이다.
+      const ready = threat && !!f.patched
+      g.strokeStyle = active ? C.red : ready ? C.mint : threat ? C.violet : C.amber
       g.lineWidth = 3.5
       g.setLineDash(active ? [] : [10, 7])
       g.lineDashOffset = -this.dashed
@@ -697,8 +702,10 @@ export class Board {
       g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke()
       g.setLineDash([])
       g.globalAlpha = 1
-      const name = f.type === 'api_down' ? '멈춤' : f.type === 'api_slow' ? '느려짐' : '단선'
-      this.pill(active ? `${name} ${left}초` : `${name} 예고 ${left}초`, x, y - r - S * 0.34, active ? C.red : C.amber, active ? 'stop' : 'clock')
+      const name = THREAT_NAME[f.type] ?? (f.type === 'api_down' ? '멈춤' : f.type === 'api_slow' ? '느려짐' : '단선')
+      const patching = n?.patchEnd ? Math.ceil((n.patchEnd - this.game.rt) / this.game.config.tps) : 0
+      const text = active ? `${name} ${left}초` : ready ? (patching > 0 ? `패치 중 ${patching}초` : '막을 준비 완료') : `${name} 예고 ${left}초`
+      this.pill(text, x, y - r - S * 0.34, active ? C.red : ready ? C.mintLow : threat ? C.violetLow : C.amber, active ? 'stop' : ready ? undefined : 'clock')
     }
   }
 

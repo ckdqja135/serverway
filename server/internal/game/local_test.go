@@ -65,6 +65,54 @@ func TestLocalResume(t *testing.T) {
 	if _, err := OpenLocal(ctx, sim.Default(), 0, &save); err == nil {
 		t.Fatal("맞지 않는 기록이 열렸습니다")
 	}
+
+	// 하드 모드 판은 하드 모드로 이어 열리고, 다시 시작해도 하드 모드다.
+	type config struct {
+		Type   string         `json:"type"`
+		Config map[string]any `json:"config"`
+		Head   head           `json:"head"`
+		Save   Save           `json:"save"`
+	}
+	read := func(l *Local, typ string) config {
+		t.Helper()
+		for {
+			select {
+			case b := <-l.Out():
+				var c config
+				json.Unmarshal(b, &c)
+				if c.Type == typ {
+					return c
+				}
+			case <-ctx.Done():
+				t.Fatal("시간 초과")
+			}
+		}
+	}
+	hl, err := OpenLocal(ctx, Mode(sim.Default(), false, true), 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(hl, "snapshot")
+	say(hl, `{"epoch":1,"seq":1,"type":"speed","speed":3}`)
+	say(hl, `{"epoch":1,"seq":2,"type":"pause"}`)
+	for read(hl, "frame").Head.Completed < 5 {
+	}
+	say(hl, `{"epoch":1,"type":"save"}`)
+	hs := read(hl, "save").Save
+	if !hs.Hard {
+		t.Fatal("하드 모드 기록에 표시가 없습니다")
+	}
+	ha, err := OpenLocal(ctx, sim.Default(), 0, &hs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := read(ha, "snapshot"); c.Config["hard"] != true || c.Head.Tick != hs.Tick {
+		t.Fatalf("하드 모드로 이어 열리지 않음: %v, %d틱", c.Config["hard"], c.Head.Tick)
+	}
+	say(ha, `{"epoch":1,"type":"restart"}`)
+	if c := read(ha, "snapshot"); c.Config["hard"] != true || c.Head.Tick != 0 {
+		t.Fatal("다시 시작하면 하드 모드가 아님")
+	}
 }
 
 // 배포로 규칙이 바뀌어도 하던 판은 시작한 판수의 규칙으로 다시 계산해 그대로 이어진다.
@@ -78,33 +126,45 @@ func TestOldRulesResume(t *testing.T) {
 		Budget    int  `json:"budget"`
 		Completed int  `json:"completed"`
 	}
-	path := func(v int) string { return fmt.Sprintf("testdata/rules%d.json", v) }
-	if os.Getenv("RULES_SAVE") == "write" {
-		b := sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true, WS: true}
-		s := sim.New(sim.Default(), 5)
-		s.Paused = false
-		for s.Over == "" && s.Tick < 700*sim.TPS {
-			b.Act(s)
-			s.Advance(sim.TPS)
-			s.Take()
+	// 하드 모드 기록은 하드 모드가 생긴 2판부터 따로 남긴다.
+	path := func(v int, hard bool) string {
+		if hard {
+			return fmt.Sprintf("testdata/hard%d.json", v)
 		}
-		out, _ := json.MarshalIndent(fixture{Save{Seed: s.Seed, Rules: sim.Rules, Tick: s.Tick, Score: s.Score, Log: s.Log}, s.Health, s.Budget, s.Completed}, "", " ")
-		if err := os.WriteFile(path(sim.Rules), out, 0o644); err != nil {
-			t.Fatal(err)
+		return fmt.Sprintf("testdata/rules%d.json", v)
+	}
+	if os.Getenv("RULES_SAVE") == "write" {
+		for _, hard := range []bool{false, true} {
+			b := sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true, WS: true, Patch: hard}
+			s := sim.New(Mode(sim.Default(), false, hard), 5)
+			s.Paused = false
+			for s.Over == "" && s.Tick < 700*sim.TPS {
+				b.Act(s)
+				s.Advance(sim.TPS)
+				s.Take()
+			}
+			out, _ := json.MarshalIndent(fixture{Save{Seed: s.Seed, Rules: sim.Rules, Hard: hard, Tick: s.Tick, Score: s.Score, Log: s.Log}, s.Health, s.Budget, s.Completed}, "", " ")
+			if err := os.WriteFile(path(sim.Rules, hard), out, 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	for v := 1; v <= sim.Rules; v++ {
+	for i := 1; i <= 2*sim.Rules; i++ {
+		v, hard := (i+1)/2, i%2 == 0
+		if hard && v < 2 {
+			continue
+		}
 		var f fixture
-		b, err := os.ReadFile(path(v))
+		b, err := os.ReadFile(path(v, hard))
 		if err == nil {
 			err = json.Unmarshal(b, &f)
 		}
 		if err != nil {
 			t.Fatalf("%d판 기록: %v", v, err)
 		}
-		cfg, err := sim.ForRules(sim.Default(), f.Save.Rules)
+		cfg, err := sim.ForRules(Mode(sim.Default(), false, f.Save.Hard), f.Save.Rules)
 		if err != nil {
 			t.Fatal(err)
 		}

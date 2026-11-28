@@ -6,13 +6,16 @@ export interface GNode {
   done: number; fail: number[]; spawned: number; rate: number; nextRate: number; upgrade: number
   next?: { slots: number; procMs: number; limit: number; hit: number }; refund: number; routed: boolean; hit: number
   store?: { data: number; cap: number; next: number; cost: number; level: number }
+  patchEnd?: number // 하드 모드: 보안 패치가 끝나는 틱
 }
 export interface GLink {
   id: number; from: number; to: number; level: number; cap: number; used: number; waiting: number; travel: number; room: number
   moving: [number, number]; pending: number; passed: number; fail: number[]; state: 'ok' | 'busy' | 'full' | 'jam' | 'blocked'; draining: boolean
   upgrade: number; nextCap: number; refund: number; ws: boolean; wsNext?: { cost: number; cap: number; travel: number }
 }
-export interface Fault { id: number; type: 'api_slow' | 'api_down' | 'link_block'; state: string; node?: number; link?: number; startAt: number; endAt: number; percent: number; failedIn: number }
+export interface Fault { id: number; type: 'api_slow' | 'api_down' | 'link_block' | Threat; state: string; node?: number; link?: number; startAt: number; endAt: number; percent: number; failedIn: number; patched?: boolean }
+export type Threat = 'hack' | 'leak' | 'ddos' | 'ransom' // 하드 모드의 보안 사고
+export const isThreat = (t: Fault['type']): t is Threat => t === 'hack' || t === 'leak' || t === 'ddos' || t === 'ransom'
 export interface Gain { label: string; from: string; to: string }
 export interface Reward { phase: number; income: number; held: number; interest: number; mul: number; left: number; options: { id: string; amount: number; taken: boolean; gains: Gain[] }[] }
 export type Opened = 'storage' | 'redis' | 'ws'
@@ -24,15 +27,17 @@ export interface Head {
   apiCost: number; dbCost: number; redisCost: number; revenueNeed: number; revenueMul: number; interestPercent: number; open: Record<Opened, boolean>; bonus: Bonus; rank: number; rankName: string; nextRank: number; surge: number; servers: number
   spawned: number; completed: number; failures: number[]; active: number; reward: Reward | null; faults: Fault[]
   upcoming: { x: number; y: number; at: number }[]; rps10: number; p95: number; area: Area; cache: number; deadline: number; pauseReason: string
+  patchCost?: number; ransomCost?: number // 하드 모드
 }
 export interface Config {
   practice: boolean; tps: number; healthMax: number; score: number; linkBase: number; linkPerCell: number
   minNodeGap: number; maxServers: number; learnSeconds: number; startSec: number; sources: { x: number; y: number }[]; refundPercent: number; failPenalty: number; faultPercent: number; lossPerSec: number
   redisHit: number; wsSpeed: number; wsRate: number; wsRevenue: number; storageWarn: number; storageSlow: number
+  hard: boolean; patchSec: number; leakHealth: number; ddosRate: number
 }
 export interface Result {
   over: string; seconds: number; score: number; completed: number; failures: number[]; health: number; spent: number; peakWait: number; apis: number; links: number
-  faults: { type: Fault['type']; count: number; failed: number }[]; advice: string; seed: number; p95: number; peakRps: number; rank: string; sources: number; dbs: number
+  faults: { type: Fault['type']; count: number; failed: number; blocked?: number; lost?: number }[]; advice: string; seed: number; p95: number; peakRps: number; rank: string; sources: number; dbs: number
 }
 export interface GEvent { k: string; at: number; r?: number; n?: number; l?: number; a?: number; b?: number; s?: number; t?: string }
 export interface Ack { seq: number; ok: boolean; error?: string; tick: number; id?: number }
@@ -40,7 +45,11 @@ export type Selection = { type: 'node' | 'link'; id: number } | null
 export type Tool = 'connect' | 'api' | 'db' | 'redis'
 
 export interface Best { score: number; seconds: number; rank: string }
-export const loadBest = (): Best | null => { try { return JSON.parse(localStorage.getItem('serverway.best') ?? 'null') } catch { return null } }
+// 최고 기록은 일반 모드와 하드 모드를 따로 남긴다.
+export const bestKey = (hard: boolean) => (hard ? 'serverway.best.hard' : 'serverway.best')
+export const loadBest = (hard = false): Best | null => { try { return JSON.parse(localStorage.getItem(bestKey(hard)) ?? 'null') } catch { return null } }
+export const HARD_UNLOCK = 20000 // 일반 모드 최고 기록이 이만큼이면 하드 모드가 열린다
+export const hardOpen = () => (loadBest()?.score ?? 0) >= HARD_UNLOCK
 export const clockText = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 // 실패 사유 순서는 서버와 같다: 경로 없음, 대기열 초과, 기한 초과, 장애
@@ -54,6 +63,10 @@ export const FAULT_TEXT: Record<Fault['type'], { title: string; effect: (f: Faul
   api_slow: { title: 'GC 지연', effect: (f) => `처리 속도 ${f.percent}%로 저하`, tip: '다른 서버로 나눠 보낼 링크를 만들어 두세요' },
   api_down: { title: '배포 실패', effect: () => '재시작하는 동안 처리 중단', tip: '다른 서버를 키우고 우회 링크를 준비하세요' },
   link_block: { title: '회선 단선', effect: () => '새 요청과 응답이 지나갈 수 없음', tip: '같은 클라이언트에서 다른 서버로 링크를 하나 더 만드세요' },
+  hack: { title: '해킹', effect: (f) => `가진 예산의 ${f.percent}%를 빼앗김`, tip: '서버를 눌러 보안 패치를 하세요' },
+  leak: { title: '데이터 유출', effect: (f) => `서비스 상태가 한 번에 ${f.percent}% 줄어듦`, tip: 'DB를 눌러 보안 패치를 하세요' },
+  ddos: { title: 'DDoS', effect: () => '가짜 요청이 쏟아져 처리 용량을 차지함', tip: '클라이언트를 눌러 차단 설정을 하세요' },
+  ransom: { title: '랜섬웨어', effect: () => 'DB가 잠겨 처리 중단', tip: 'DB를 눌러 보안 패치를 하세요. 잠기면 몸값을 내고 풀 수 있습니다' },
 }
 export const nodeName = (n: GNode) => (n.kind === SOURCE ? `클라이언트 ${n.index}` : n.kind === API ? `서버 ${n.index}` : n.kind === CACHE ? `Redis ${n.index}` : `DB ${n.index}`)
 export const perSec = (n: { slots: number; procMs: number }) => ((n.slots * 1000) / n.procMs).toFixed(1)

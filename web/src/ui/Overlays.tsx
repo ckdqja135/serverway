@@ -1,10 +1,10 @@
-import { ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, CircleX, Coins, Flag, Database, Gauge, HardDrive, HeartPulse, House, Image as ImageIcon, Layers, Play, RotateCcw, ServerCog, Share2, Shuffle, ShieldAlert, SkipForward, Trophy, Timer, Waypoints, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameClient } from '../client'
-import { FAIL, FAULT_TEXT, clockText, loadBest, revenueText, type Best, type Result } from '../types'
+import { FAIL, FAULT_TEXT, HARD_UNLOCK, bestKey, clockText, isThreat, loadBest, revenueText, type Best, type Result } from '../types'
 import { LOCAL } from '../wire'
 import { Boosts } from './Growth'
-import { WhenToGrow } from './Lesson'
+import { Threats, WhenToGrow } from './Lesson'
 import { Toggles } from './Toggles'
 import { useFit } from './fit'
 import { useSettle } from './settle'
@@ -80,18 +80,27 @@ async function shareResult(r: Result, g: GameClient): Promise<string> {
   return ok ? copied : '이 브라우저에서는 복사할 수 없습니다. 다른 브라우저에서 열어 주세요.'
 }
 
+// faultLine은 결과에 남기는 장애 한 줄이다. 보안 사고는 막은 수와 잃은 것을 보여 준다.
+const faultLine = (f: Result['faults'][number]) => {
+  const t = FAULT_TEXT[f.type].title
+  if (!isThreat(f.type)) return `${t} ${f.count}번 (실패 ${f.failed})`
+  const lost = f.lost ? `, ${f.type === 'leak' ? `상태 -${f.lost / 1000}%` : f.type === 'ransom' ? `몸값 ${f.lost}` : `예산 -${f.lost}`}` : ''
+  return `${t} ${f.count}번 (막음 ${f.blocked ?? 0}${lost})`
+}
+
 export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void; frame: () => Frame | undefined }) {
   const r = g.result, fit = useFit(), settle = useSettle(!!r)
-  const [best, setBest] = useState<{ old: Best | null; isNew: boolean } | null>(null)
+  const [best, setBest] = useState<{ old: Best | null; isNew: boolean; unlocked: boolean } | null>(null)
   const [note, setNote] = useState('')
   const [shot, setShot] = useState('')
   useEffect(() => {
     setNote(''); setShot('')
     if (!r) return setBest(null)
-    const old = loadBest()
-    const isNew = !g.chosen && !g.odd && r.score > (old?.score ?? 0)
-    if (isNew) localStorage.setItem('serverway.best', JSON.stringify({ score: r.score, seconds: r.seconds, rank: r.rank }))
-    setBest({ old, isNew })
+    // 최고 기록은 모드마다 따로이고, 튜토리얼과 연습과 어뷰징 의심 판은 남기지 않는다. 일반 모드 기록이 하드 모드를 연다.
+    const hard = g.config.hard, old = loadBest(hard)
+    const isNew = !g.chosen && !g.odd && !g.config.practice && r.score > (old?.score ?? 0)
+    if (isNew) localStorage.setItem(bestKey(hard), JSON.stringify({ score: r.score, seconds: r.seconds, rank: r.rank }))
+    setBest({ old, isNew, unlocked: isNew && !hard && (old?.score ?? 0) < HARD_UNLOCK && r.score >= HARD_UNLOCK })
   }, [r?.seed, r?.score, r?.over])
   if (!r) return null
   const image = async () => { const a = await shareImage(r, g, frame()).catch(() => ({ note: '이미지를 만들지 못했습니다. 화면을 캡처해 주세요.', show: '' })); setNote(a.note); setShot(a.show ?? '') }
@@ -111,6 +120,7 @@ export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; on
         {best && (best.isNew ? <p className="newbest"><Trophy size={17} aria-hidden />최고 기록입니다{best.old ? ` (이전 ${best.old.score.toLocaleString()}점)` : ''}</p> : best.old && <p className="muted">최고 기록 {best.old.score.toLocaleString()}점, {clockText(best.old.seconds)}</p>)}
         {g.odd && <p className="muted">AI 등의 화면 어뷰징이 의심되어 최고 기록에는 남지 않습니다.</p>}
         {g.chosen && !g.odd && <p className="muted">시드를 정해 시작한 연습 기록이라 최고 기록에는 남지 않습니다.</p>}
+        {best?.unlocked && <p className="newbest hard"><ShieldAlert size={17} aria-hidden />하드 모드가 열렸습니다. 처음 화면에서 도전해 보세요</p>}
         <div className="nums">
           <div><span>완료</span><b>{r.completed.toLocaleString()}</b></div><div><span>성공률</span><b>{rate.toFixed(1)}%</b></div>
           <div><span>최고 처리량</span><b>{(r.peakRps / 10).toFixed(1)}/s</b></div><div><span>클라이언트</span><b>{r.sources}개</b></div>
@@ -122,7 +132,7 @@ export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; on
         <div className="failbars">{FAIL.map((f, i) => (
           <div key={f.code} className="failbar"><span><b>{f.code}</b> {f.name}</span><div className="bar"><i className="bad" style={{ width: total ? `${(r.failures[i] / total) * 100}%` : 0 }} /></div><em>{r.failures[i]}</em></div>
         ))}</div>
-        {r.faults.length > 0 && <p className="muted">겪은 장애: {r.faults.map((f) => `${FAULT_TEXT[f.type].title} ${f.count}번 (실패 ${f.failed})`).join(', ')}</p>}
+        {r.faults.length > 0 && <p className="muted">겪은 {g.config.hard ? '장애와 보안 사고' : '장애'}: {r.faults.map(faultLine).join(', ')}</p>}
         <p className="advice"><Gauge size={17} aria-hidden />{r.advice}</p>
         </div>
         <div className="row">
@@ -172,6 +182,16 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
   // 한 화면에 다 늘어놓으면 너무 길어서, 주제별로 나눠 좌우로 넘긴다.
   const pages: [string, ReactNode][] = [
     ['언제 무엇을 늘리나', <WhenToGrow />],
+    ...(c.hard ? [['하드 모드', <>
+      <ul>
+        <li>클라이언트 셋, 서버 셋, DB 둘이 이어진 스타트업에서 시작합니다. 처음부터 트래픽이 많고 보호 시간이 없습니다. 최고 기록은 일반 모드와 따로 남습니다.</li>
+        <li><b>보안 사고:</b> 공격 전에 보라색으로 예고됩니다. 공격받을 곳을 눌러 보안 패치(지금 비용 {g.head.patchCost})를 하면 막습니다. 패치하는 {c.patchSec}초 동안 그곳은 멈춥니다.</li>
+        <li><b>랜섬웨어:</b> 잠긴 DB는 몸값(지금 {g.head.ransomCost})을 내면 바로 풀립니다. 내지 않으면 정해진 시간 동안 잠겨 있습니다.</li>
+        <li><b>DDoS:</b> 회색 가짜 요청은 처리 용량을 차지하지만, 완료해도 점수와 예산이 없고 실패해도 서비스 상태가 줄지 않습니다.</li>
+        <li>보안 사고 중의 실패는 장애와 달리 페널티가 줄지 않습니다.</li>
+      </ul>
+      <Threats />
+    </>] as [string, ReactNode]] : []),
     ['기본 규칙', <ul>
       <li>요청은 클라이언트, 서버, DB 순서로 처리된 뒤 <b>지나온 링크로 되돌아와야</b> 완료됩니다. 완료 하나에 {c.score}점입니다.</li>
       <li><b>마라톤:</b> 끝나는 시간이 없습니다. 클라이언트와 트래픽, 보드가 계속 늘어나며 서비스 상태가 0이 되면 끝납니다. 8분부터는 전체 트래픽이 점점 더 빠르게 늘어납니다.</li>

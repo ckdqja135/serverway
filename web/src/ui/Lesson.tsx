@@ -1,14 +1,15 @@
-import { ArrowRight, CircleX, Coins, Database, DatabaseZap, GraduationCap, HardDrive, Hexagon, House, Play, SkipForward, TriangleAlert, Waypoints, Zap } from 'lucide-react'
+import { ArrowRight, Bug, CircleX, Coins, Database, DatabaseZap, FileWarning, GraduationCap, HardDrive, Hexagon, House, LockKeyhole, Play, ShieldAlert, SkipForward, TriangleAlert, Waypoints, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Hint } from '../board'
 import type { GameClient } from '../client'
-import { API, DB, SOURCE, nodeName, perSec, type GLink, type GNode } from '../types'
+import { API, DB, SOURCE, nodeName, perSec, type Fault, type GLink, type GNode, type Threat } from '../types'
 import { useFit } from './fit'
 
 const LEARNED = 'serverway.learned'
+const HARD_LEARNED = 'serverway.learned.hard' // 하드 모드의 보안 튜토리얼
 const MIN_READ = 3500 // 지켜보는 단계가 글을 읽기 전에 넘어가지 않게 하는 시간(ms)
-export const learned = () => localStorage.getItem(LEARNED) === 'true'
-export const setLearned = () => localStorage.setItem(LEARNED, 'true')
+export const learned = (hard = false) => localStorage.getItem(hard ? HARD_LEARNED : LEARNED) === 'true'
+export const setLearned = (hard = false) => localStorage.setItem(hard ? HARD_LEARNED : LEARNED, 'true')
 
 // 튜토리얼 한 단계. run이 참이면 시간이 흐르고 거짓이면 멈춘다. 비우면 플레이어가 정한다.
 interface Step {
@@ -148,15 +149,89 @@ const STEPS: Step[] = [
   },
 ]
 
-export interface Lesson { stage: 'intro' | 'steps' | 'end'; step: Step | null; at: number; next: () => void }
+// 하드 모드의 보안 튜토리얼. 하드 모드와 같은 판에서 보안 사고를 하나씩 일으켜 막는 법을 해 본다.
+const threat = (g: GameClient, t: Threat): Fault | undefined => g.head.faults.find((f) => f.type === t)
+const aim = (t: Threat) => (g: GameClient) => { const f = threat(g, t); return f?.node ? { node: f.node } : null }
+const handled = (t: Threat) => (g: GameClient) => !threat(g, t) || !!threat(g, t)!.patched
+
+const HARD_STEPS: Step[] = [
+  {
+    id: 'start', title: '하드 모드', focus: 'start',
+    text: () => '하드 모드는 클라이언트 셋, 서버 셋, DB 둘이 이미 이어진 스타트업에서 시작합니다. 처음 45초 보호가 없고, 장애에 더해 보안 사고가 일어납니다. 시작을 눌러 보세요.',
+    done: (g) => g.head.started,
+  },
+  {
+    id: 'hack', title: '해킹 예고', run: true, scene: [['traffic', 1500], ['hack']],
+    text: () => '보안 사고도 장애처럼 먼저 예고됩니다. 보라색 점선이 공격받을 곳이고, 위쪽 알림에 남은 시간이 나옵니다.',
+    done: (g, sec) => !!threat(g, 'hack') || sec > 4,
+  },
+  {
+    id: 'hack-patch', title: '보안 패치로 막기', run: false, focus: 'patch',
+    text: (g) => `해킹은 취약한 서버를 뚫고 가진 예산의 ${threat(g, 'hack')?.percent ?? 30}%를 빼앗아 갑니다. 공격받을 서버를 누르고 보안 패치를 하세요. 패치하는 ${g.config.patchSec}초 동안 그 서버는 멈추니, 다른 서버가 요청을 받아 줄 수 있을 때 하는 것이 좋습니다.`,
+    hint: aim('hack'), done: handled('hack'),
+  },
+  {
+    id: 'hack-block', title: '공격 막기', run: true,
+    text: () => '패치를 마친 곳은 초록색으로 바뀌고, 공격이 와도 막아 냅니다. 패치는 공격 전에만 할 수 있습니다.',
+    done: (g) => !threat(g, 'hack'),
+  },
+  {
+    id: 'ddos', title: 'DDoS 예고', run: true, scene: [['ddos']],
+    text: () => '이번에는 DDoS입니다. 한 클라이언트에서 가짜 요청이 쏟아질 예정입니다.',
+    done: (g, sec) => !!threat(g, 'ddos') || sec > 4,
+  },
+  {
+    id: 'ddos-patch', title: 'DDoS 차단 설정', run: false, focus: 'patch',
+    text: () => '막지 못하면 회색 가짜 요청이 링크와 서버를 차지해 진짜 요청이 밀려 실패합니다. 가짜 요청은 점수도 예산도 주지 않습니다. 노리는 클라이언트를 누르고 DDoS 차단 설정을 하세요. 설정하는 동안 그 클라이언트는 잠시 요청을 보내지 않습니다.',
+    hint: aim('ddos'), done: handled('ddos'),
+  },
+  {
+    id: 'ddos-block', title: '공격 막기', run: true,
+    text: () => '차단 설정을 마쳤습니다. 막지 못했을 때는 그 클라이언트의 링크와 서버를 넉넉히 두면 가짜 요청을 버텨 낼 수 있습니다.',
+    done: (g) => !threat(g, 'ddos'),
+  },
+  {
+    id: 'leak', title: '데이터 유출 예고', run: true, scene: [['leak']],
+    text: () => '데이터 유출은 DB를 노립니다.',
+    done: (g, sec) => !!threat(g, 'leak') || sec > 4,
+  },
+  {
+    id: 'leak-patch', title: 'DB 패치', run: false, focus: 'patch',
+    text: (g) => `유출되면 서비스 상태가 한 번에 ${g.config.leakHealth / 1000}% 줄어듭니다. 실패와 달리 1초 상한도 없습니다. DB를 누르고 보안 패치를 하세요. 패치하는 동안 그 DB가 멈추니, 샤드를 둘 이상 두면 언제든 안심하고 패치할 수 있습니다.`,
+    hint: aim('leak'), done: handled('leak'),
+  },
+  {
+    id: 'leak-block', title: '공격 막기', run: true,
+    text: () => '유출을 막았습니다. 패치 비용은 구간이 오를수록 조금씩 오릅니다.',
+    done: (g) => !threat(g, 'leak'),
+  },
+  {
+    id: 'ransom', title: '랜섬웨어 예고', run: true, scene: [['ransom']],
+    text: () => '마지막은 랜섬웨어입니다. 이번에는 패치하지 말고 무슨 일이 일어나는지 지켜보세요.',
+    done: (g) => !threat(g, 'ransom') || threat(g, 'ransom')!.state === 'active',
+  },
+  {
+    id: 'ransom-pay', title: '잠긴 DB 풀기', run: false, focus: 'patch',
+    text: (g) => threat(g, 'ransom') ? `DB가 잠겨 요청을 처리하지 못합니다. 잠긴 DB를 누르고 몸값을 내면 바로 풀립니다. 내지 않으면 ${Math.round((threat(g, 'ransom')!.endAt - threat(g, 'ransom')!.startAt) / g.config.tps)}초 동안 잠겨 있으니, 다른 DB 샤드가 버틸 수 있다면 기다리는 것도 방법입니다.` : '미리 패치해서 랜섬웨어를 막았습니다. 막지 못했다면 몸값을 내고 풀거나 다른 DB로 버텨야 합니다.',
+    hint: aim('ransom'), done: (g) => !threat(g, 'ransom'),
+  },
+  {
+    id: 'wrap', title: '정리', run: true,
+    text: () => '보안 사고는 공격 전에 패치로 막는 것이 가장 쌉니다. 패치하는 동안 그곳이 멈추므로, 서버와 DB를 여유 있게 두면 언제든 패치할 수 있습니다.',
+  },
+]
+
+export interface Lesson { stage: 'intro' | 'steps' | 'end'; step: Step | null; at: number; total: number; hard: boolean; next: () => void }
 
 // 안내는 실제 게임 상태를 보고 다음 단계로 넘어간다.
 export function useLesson(g: GameClient, halted: boolean): Lesson | null {
   const on = g.ready && g.config.practice
+  const hard = on && g.config.hard
+  const steps = hard ? HARD_STEPS : STEPS
   const [at, setAt] = useState(-1) // -1은 소개 화면
   const entered = useRef(-1)
   const from = useRef({ tick: 0, ms: 0 })
-  const step = at >= 0 && at < STEPS.length ? STEPS[at] : null
+  const step = at >= 0 && at < steps.length ? steps[at] : null
   const open = g.status === 'open'
 
   useEffect(() => {
@@ -176,23 +251,41 @@ export function useLesson(g: GameClient, halted: boolean): Lesson | null {
   }, [on, open, halted, run, on && g.head.paused])
 
   if (!on) return null
-  return { stage: at < 0 ? 'intro' : step ? 'steps' : 'end', step, at, next: () => setAt(at + 1) }
+  return { stage: at < 0 ? 'intro' : step ? 'steps' : 'end', step, at, total: steps.length, hard, next: () => setAt(at + 1) }
 }
 
 export function LessonCard({ g, lesson, onSkip }: { g: GameClient; lesson: Lesson; onSkip: () => void }) {
-  const { step, at } = lesson
+  const { step, at, total } = lesson
   if (!step) return null
   return (
     <div className="lesson" role="status">
-      <div className="lessonbar" aria-hidden><i style={{ width: `${((at + 1) / STEPS.length) * 100}%` }} /></div>
-      <div><b>{step.title}</b><small>튜토리얼 {at + 1} / {STEPS.length}</small><button className="skip" onClick={onSkip}><SkipForward size={14} aria-hidden /><span><i>튜토리얼 </i>건너뛰기</span></button></div>
+      <div className="lessonbar" aria-hidden><i style={{ width: `${((at + 1) / total) * 100}%` }} /></div>
+      <div><b>{step.title}</b><small>{lesson.hard ? '보안 튜토리얼' : '튜토리얼'} {at + 1} / {total}</small><button className="skip" onClick={onSkip}><SkipForward size={14} aria-hidden /><span><i>튜토리얼 </i>건너뛰기</span></button></div>
       <div><p>{step.text(g)}</p>{!step.done && <button className="next" onClick={lesson.next}>다음<ArrowRight size={15} aria-hidden /></button>}</div>
     </div>
   )
 }
 
-export function LessonIntro({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
+export function LessonIntro({ onNext, onSkip, hard }: { onNext: () => void; onSkip: () => void; hard: boolean }) {
   const fit = useFit()
+  if (hard) return (
+    <div className="veil" role="dialog" aria-modal aria-label="보안 튜토리얼 소개">
+      <div ref={fit} className="modal learn">
+        <h2>하드 모드에 오신 것을 환영합니다</h2>
+        <ol className="flow">
+          <li><b>시작</b>이미 갖춘 스타트업에서, 보호 시간 없이 시작합니다.</li>
+          <li><b>예고</b>보안 사고는 공격 전에 보라색으로 예고됩니다.</li>
+          <li><b>방어</b>공격받을 곳에 보안 패치를 하면 막습니다.</li>
+          <li><b>대응</b>막지 못하면 예산이나 서비스 상태를 잃습니다.</li>
+        </ol>
+        <p className="muted">해킹, DDoS, 데이터 유출, 랜섬웨어를 하나씩 겪으며 막는 법을 해 봅니다. 2분쯤 걸리고 여기서는 지지 않습니다.</p>
+        <div className="row">
+          <button className="big" onClick={onSkip}><SkipForward size={17} aria-hidden />건너뛰고 하드 모드</button>
+          <button className="big primary" autoFocus onClick={onNext}><ShieldAlert size={18} aria-hidden />보안 튜토리얼 시작</button>
+        </div>
+      </div>
+    </div>
+  )
   return (
     <div className="veil" role="dialog" aria-modal aria-label="튜토리얼 소개">
       <div ref={fit} className="modal learn">
@@ -213,9 +306,23 @@ export function LessonIntro({ onNext, onSkip }: { onNext: () => void; onSkip: ()
   )
 }
 
-export function LessonEnd({ onDone, onHome }: { onDone: () => void; onHome: () => void }) {
+export function LessonEnd({ onDone, onHome, hard }: { onDone: () => void; onHome: () => void; hard: boolean }) {
   const go = useRef<HTMLButtonElement>(null), fit = useFit()
   useEffect(() => go.current?.focus({ preventScroll: true }), [])
+  if (hard) return (
+    <div className="veil" role="dialog" aria-modal aria-label="보안 튜토리얼 완료">
+      <div ref={fit} className="modal help learn">
+        <h2>보안 튜토리얼을 마쳤습니다</h2>
+        <p className="muted">아래 표는 하드 모드 중에도 설정의 게임 규칙에서 다시 볼 수 있습니다.</p>
+        <Threats />
+        <p>하드 모드는 처음부터 트래픽이 많고 보호 시간이 없습니다. 패치할 예산을 조금 남겨 두세요.</p>
+        <div className="row">
+          <button className="big" onClick={onHome}><House size={17} aria-hidden />처음으로</button>
+          <button ref={go} className="big primary" onClick={onDone}><Play size={18} aria-hidden />하드 모드 시작</button>
+        </div>
+      </div>
+    </div>
+  )
   return (
     <div className="veil" role="dialog" aria-modal aria-label="튜토리얼 완료">
       <div ref={fit} className="modal help learn">
@@ -243,6 +350,21 @@ const GROW: [ReactNode, string, string][] = [
   [<Zap />, '업그레이드 비용이 비싸짐', '새로 한 대 짓는 쪽과 비교합니다'],
   [<Coins />, '예산이 남음', '다음에 막힐 곳을 미리 넓힙니다'],
 ]
+
+const THREATS: [ReactNode, string, string, string][] = [
+  [<Bug />, '해킹', '서버. 가진 예산의 일부를 빼앗김', '서버를 눌러 보안 패치'],
+  [<ShieldAlert />, 'DDoS', '클라이언트. 가짜 요청이 처리 용량을 차지함', '클라이언트를 눌러 차단 설정, 놓쳤다면 링크와 서버를 넉넉히'],
+  [<FileWarning />, '데이터 유출', 'DB. 서비스 상태가 한 번에 줄어듦', 'DB를 눌러 보안 패치'],
+  [<LockKeyhole />, '랜섬웨어', 'DB. 잠겨서 처리가 멈춤', 'DB를 눌러 보안 패치, 잠기면 몸값을 내거나 다른 샤드로 버티기'],
+]
+
+// Threats는 보안 사고와 막는 법이다.
+export function Threats() {
+  return (
+    <table className="grow threats"><thead><tr><th>사고</th><th>노리는 곳과 피해</th><th>막는 법</th></tr></thead>
+      <tbody>{THREATS.map(([icon, name, what, how]) => <tr key={name}><th scope="row"><span aria-hidden>{icon}</span>{name}</th><td>{what}</td><td>{how}</td></tr>)}</tbody></table>
+  )
+}
 
 export function WhenToGrow() {
   return (

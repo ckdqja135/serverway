@@ -1,5 +1,5 @@
 // playtest: 화면 없이 봇 전략별 결과를 비교한다. 밸런스를 바꾼 뒤 확인할 때 쓴다.
-// 기록 파일(/api/sessions/{id}/replay 응답)을 인자로 주면 그 판을 다시 계산한다.
+// 기록 파일(/api/sessions/{id}/replay 응답)을 인자로 주면 그 판을 다시 계산하고, hard를 주면 하드 모드로 비교한다.
 package main
 
 import (
@@ -19,6 +19,7 @@ func replay(path string) {
 	var in struct {
 		Seed  uint64         `json:"seed"`
 		Rules int            `json:"rules"`
+		Hard  bool           `json:"hard"`
 		Tick  int            `json:"tick"`
 		Score int            `json:"score"`
 		Log   []sim.LogEntry `json:"log"`
@@ -26,7 +27,11 @@ func replay(path string) {
 	if err := json.Unmarshal(b, &in); err != nil {
 		log.Fatal(err)
 	}
-	cfg, err := sim.ForRules(sim.Default(), in.Rules)
+	base := sim.Default()
+	if in.Hard {
+		base = sim.Hard(base)
+	}
+	cfg, err := sim.ForRules(base, in.Rules)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,7 +40,9 @@ func replay(path string) {
 }
 
 func main() {
-	if len(os.Args) > 1 {
+	cfg := sim.Default()
+	hard := len(os.Args) > 1 && os.Args[1] == "hard"
+	if len(os.Args) > 1 && !hard {
 		replay(os.Args[1])
 		return
 	}
@@ -55,10 +62,17 @@ func main() {
 		{"저장 공간과 Redis", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true}},
 		{"전부", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true, WS: true}},
 	}
+	if hard {
+		cfg = sim.Hard(cfg)
+		bots = append(bots[len(bots)-3:], struct {
+			name string
+			b    sim.Bot
+		}{"전부와 보안 패치", sim.Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Storage: true, Redis: true, WS: true, Patch: true}})
+	}
 	for _, x := range bots {
 		for seed := uint64(1); seed <= 5; seed++ {
 			b := x.b
-			s := sim.Play(sim.Default(), seed, &b, 3600)
+			s := sim.Play(cfg, seed, &b, 3600)
 			servers, levels := 0, 0
 			for _, n := range s.Nodes {
 				if n.Kind != sim.Source {

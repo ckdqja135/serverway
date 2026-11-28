@@ -96,5 +96,28 @@
     { "id": "cache", "amount": 15 },
     { "id": "storage", "amount": 30 },
     { "id": "revenue", "amount": 10 }
-  ]
+  ],
+  "hard": {
+    "budget": 500, "faultFromSec": 150, "sourceFromSec": 300,
+    "areas": [
+      { "atPhase": 0, "x": 1, "y": 0, "w": 19, "h": 13 },
+      { "atPhase": 1, "x": 0, "y": 0, "w": 21, "h": 15 },
+      { "atPhase": 2, "x": 0, "y": 0, "w": 28, "h": 15 }
+    ],
+    "sources": [
+      { "x": 3, "y": 2, "appearSec": 0, "noticeSec": 0, "rate": [[0, 2200], [120, 3000], [300, 3800], [600, 4600]] },
+      { "x": 2, "y": 6, "appearSec": 0, "noticeSec": 0, "rate": [[0, 1800], [120, 2500], [300, 3200], [600, 3900]] },
+      { "x": 3, "y": 10, "appearSec": 0, "noticeSec": 0, "rate": [[0, 1500], [120, 2100], [300, 2700], [600, 3300]] },
+      { "x": 18, "y": 13, "appearSec": 100, "noticeSec": 15, "rate": [[100, 600], [200, 1600], [400, 2600], [600, 3200]] },
+      { "x": 22, "y": 3, "appearSec": 210, "noticeSec": 15, "rate": [[210, 600], [300, 1500], [600, 2800]] }
+    ],
+    "apis": [{ "x": 8, "y": 2 }, { "x": 8, "y": 6 }, { "x": 8, "y": 10 }],
+    "dbs": [{ "x": 14, "y": 4 }, { "x": 14, "y": 8 }],
+    "links": [[0, 3], [1, 4], [2, 5], [3, 6], [4, 6], [4, 7], [5, 7]],
+    "security": {
+      "fromSec": 50, "everySec": 60, "minEverySec": 30, "noticeSec": 20,
+      "patchCost": 25, "patchStep": 8, "patchSec": 4,
+      "hackPercent": 30, "leakHealth": 12000, "ddosSec": 15, "ddosRate": 6000, "ransomSec": 25, "ransomCost": 60, "ransomStep": 15
+    }
+  }
 }
