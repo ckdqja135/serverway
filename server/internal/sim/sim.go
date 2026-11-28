@@ -215,6 +215,7 @@ type Sim struct {
 	nextID   int
 	nextReq  int
 	gainLeft int
+	lossLeft int // 이번 1초 동안 더 잃을 수 있는 서비스 상태
 	revenue  int
 	nodeIx   map[int]*Node
 	linkIx   map[int]*Link
@@ -269,13 +270,36 @@ func (s *Sim) reindex() {
 	}
 }
 
-// splitmix64
-func (s *Sim) rand(n int) int {
-	s.rng += 0x9e3779b97f4a7c15
-	z := s.rng
+// mix는 splitmix64의 섞기 단계다.
+func mix(z uint64) uint64 {
 	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
 	z = (z ^ (z >> 27)) * 0x94d049bb133111eb
-	z ^= z >> 31
+	return z ^ (z >> 31)
+}
+
+// rand는 요청이 생기는 간격과 캐시 적중처럼 플레이에 따라 쓰는 횟수가 달라지는 운이다.
+func (s *Sim) rand(n int) int {
+	s.rng += 0x9e3779b97f4a7c15
+	return int(mix(s.rng) % uint64(n))
+}
+
+// 시드로 고정하는 운의 종류
+const (
+	luckReward = iota + 1
+	luckFault
+	luckTarget
+	luckSpot
+)
+
+// luck은 시드와 몇 번째 일인지만으로 정하는 운이다. 같은 시드면 어떻게 플레이하든 같은 값이 나온다.
+// 1판 규칙으로 시작한 판은 예전처럼 요청 흐름과 같은 운을 쓴다.
+func (s *Sim) luck(kind, a, b, n int) int {
+	if s.Cfg.Rules < 2 {
+		return s.rand(n)
+	}
+	z := mix(s.Seed ^ uint64(kind)*0x9e3779b97f4a7c15)
+	z = mix(z ^ uint64(a)*0xbf58476d1ce4e5b9)
+	z = mix(z ^ uint64(b)*0x94d049bb133111eb)
 	return int(z % uint64(n))
 }
 
@@ -593,7 +617,7 @@ func (s *Sim) Advance(n int) int {
 func (s *Sim) step() {
 	s.Tick++
 	if s.Tick%TPS == 1 {
-		s.gainLeft = s.Cfg.Health.MaxGainPerSec
+		s.gainLeft, s.lossLeft = s.Cfg.Health.MaxGainPerSec, s.Cfg.Health.MaxLossPerSec
 		s.perSec[s.Tick/TPS%len(s.perSec)] = 0
 	}
 	s.stepGrowth()
@@ -639,7 +663,7 @@ func (s *Sim) stepGrowth() {
 			{Type: "link_block", NoticeSec: 14, DurationSec: 16},
 			{Type: "api_down", NoticeSec: 16, DurationSec: 14},
 		}
-		d := types[s.rand(len(types))]
+		d := types[s.luck(luckFault, s.faultN, 0, len(types))]
 		d.AtSec = s.faultAt / TPS
 		s.addFault(d)
 		s.faultN++
@@ -657,6 +681,7 @@ func (s *Sim) stepGrowth() {
 }
 
 // spot은 새 클라이언트 자리를 고른다. 후보 중 다른 노드와 가장 멀리 떨어진 곳이다.
+// 후보는 시드로 정하지만, 지어 둔 노드를 피해 고르므로 플레이에 따라 다른 후보가 뽑힐 수 있다.
 func (s *Sim) spot() (int, int, bool) {
 	a := s.Area()
 	bx, by, best := 0, 0, 0.0
@@ -673,8 +698,8 @@ func (s *Sim) spot() (int, int, bool) {
 			bx, by, best = x, y, gap
 		}
 	}
-	for range 32 {
-		try(a.X+1+s.rand(max(1, a.W-2)), a.Y+1+s.rand(max(1, a.H-2)), 3)
+	for i := range 32 {
+		try(a.X+1+s.luck(luckSpot, s.sourceN, 2*i, max(1, a.W-2)), a.Y+1+s.luck(luckSpot, s.sourceN, 2*i+1, max(1, a.H-2)), 3)
 	}
 	// 빈자리를 메워 새 클라이언트를 막을 수 없게, 못 찾으면 모든 칸에서 좁은 곳까지 찾는다.
 	if best == 0 {
@@ -775,7 +800,7 @@ func (s *Sim) noticeFault(f *Fault) {
 			top = min(3, len(list))
 		}
 		f.State = "notice"
-		if id := list[s.rand(top)].id; f.Def.Type == "link_block" {
+		if id := list[s.luck(luckTarget, f.ID, 0, top)].id; f.Def.Type == "link_block" {
 			f.Link = id
 		} else {
 			f.Node = id
@@ -993,6 +1018,11 @@ func (s *Sim) fail(r *Request, reason int, n *Node, l *Link) {
 			s.stat(f.Def.Type).Failed++
 			penalty = s.Cfg.Health.FailPenalty * s.Cfg.Health.FaultPercent / 100
 		}
+	}
+	// 실패가 한꺼번에 몰려도 1초에 잃는 양에는 상한이 있어, 손쓸 틈 없이 무너지지 않는다. 0이면 상한이 없다.
+	if s.Cfg.Health.MaxLossPerSec > 0 {
+		penalty = min(penalty, s.lossLeft)
+		s.lossLeft -= penalty
 	}
 	s.Health -= penalty
 	if s.Tick < s.Cfg.Health.LearnSeconds*TPS && s.Health < s.Cfg.Health.LearnFloor {
@@ -1343,9 +1373,17 @@ func (s *Sim) stepEnd() {
 	s.Budget += income + interest
 	s.PhaseAt = s.Tick
 	s.PhaseEnd = s.Tick + min(max(e.PhaseMaxSec, s.Cfg.PhaseSeconds), s.Cfg.PhaseSeconds+s.Phase*e.PhaseStepSec)*TPS
-	// 더 좋아질 수 없는 보상은 빼고 고른다.
+	// 후보 순서는 시드와 구간만으로 섞고, 더 좋아질 수 없는 보상은 그 자리에서 뺀다.
+	// 그래서 같은 시드면 빠진 것 말고는 플레이와 상관없이 같은 카드가 나온다.
+	order := slices.Clone(s.Cfg.Rewards)
+	if s.Cfg.Rules >= 2 {
+		for i := len(order) - 1; i > 0; i-- {
+			j := s.luck(luckReward, s.Phase, i, i+1)
+			order[i], order[j] = order[j], order[i]
+		}
+	}
 	var pool []RewardDef
-	for _, r := range s.Cfg.Rewards {
+	for _, r := range order {
 		if (r.ID == "cache" && s.Bonus.Cache >= 60) || (r.ID == "apiOpt" && s.Bonus.APIOpt >= 60) || (r.ID == "dbIndex" && s.Bonus.DBIndex >= 60) ||
 			(r.ID == "deadline" && s.Bonus.Deadline >= 16) || (r.ID == "health" && s.Health >= s.Cfg.Health.Max) || (r.ID == "storage" && !s.Unlocked(s.Cfg.Unlock.Storage)) {
 			continue
@@ -1355,9 +1393,12 @@ func (s *Sim) stepEnd() {
 	}
 	// 구간이 오를수록 선택지가 둘에서 다섯까지 늘고, 넷부터는 두 개를 고른다.
 	n, left := min(s.Phase+1, 5, len(pool)), 1
-	for i := range n {
-		j := i + s.rand(len(pool)-i)
-		pool[i], pool[j] = pool[j], pool[i]
+	if s.Cfg.Rules < 2 {
+		// 1판 규칙: 남은 후보에서 요청 흐름과 같은 운으로 골랐다.
+		for i := range n {
+			j := i + s.rand(len(pool)-i)
+			pool[i], pool[j] = pool[j], pool[i]
+		}
 	}
 	if n >= 4 {
 		left = 2

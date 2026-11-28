@@ -55,6 +55,10 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
   return (
     <>
       <h2 className={n.kind === DB ? 'mint' : n.kind === CACHE ? 'violet' : 'peri'}>{nodeName(n)} <small>Lv{n.level + 1}</small></h2>
+      {/* 업그레이드는 제목 바로 아래에 두어 어느 노드를 골라도 같은 자리에 있게 한다. */}
+      {!n.draining && <Upgrade g={g} cost={n.upgrade} level={n.level} onClick={() => g.send('upgradeNode', { id: n.id })}
+        gains={n.next ? [['초당 처리', `${perSec(n)} → ${perSec(n.next)}`], n.kind === CACHE ? ['적중률', `${n.hit}% → ${n.next.hit}%`] : ['대기열', `${n.limit} → ${n.next.limit}`]] : []} />}
+      {!n.draining && st && <Upgrade g={g} cost={st.cost} title="저장 공간 늘리기" icon={<HardDrive size={17} aria-hidden />} onClick={() => g.send('storage', { id: n.id })} gains={[['저장 공간', `${st.cap.toLocaleString()} → ${st.next.toLocaleString()}`]]} />}
       <p className={(n.state === 'full' && !stuck) || full ? 'bad' : 'muted'}>
         {n.state === 'down' ? '장애로 멈춰 있습니다.' : n.state === 'slow' ? `장애로 처리 속도가 ${n.speed}%입니다.`
           : stuck ? '처리는 끝났지만 다음으로 보낼 길이 막혔습니다. 원인은 이 앞쪽입니다.' : n.state === 'full' ? '이곳이 병목입니다. 처리 용량이 부족합니다.'
@@ -71,9 +75,6 @@ function NodeInfo({ g, n }: { g: GameClient; n: GNode }) {
         <Row k="처리한 요청" v={n.done} />
         {n.kind === API && g.head.cache > 0 && <Row k="바로 응답" v={`${g.head.cache}%`} />}
       </dl>
-      {!n.draining && <Upgrade g={g} cost={n.upgrade} level={n.level} onClick={() => g.send('upgradeNode', { id: n.id })}
-        gains={n.next ? [['초당 처리', `${perSec(n)} → ${perSec(n.next)}`], n.kind === CACHE ? ['적중률', `${n.hit}% → ${n.next.hit}%`] : ['대기열', `${n.limit} → ${n.next.limit}`]] : []} />}
-      {!n.draining && st && <Upgrade g={g} cost={st.cost} title="저장 공간 늘리기" icon={<HardDrive size={17} aria-hidden />} onClick={() => g.send('storage', { id: n.id })} gains={[['저장 공간', `${st.cap.toLocaleString()} → ${st.next.toLocaleString()}`]]} />}
     </>
   )
 }
@@ -83,6 +84,9 @@ function LinkInfo({ g, l }: { g: GameClient; l: GLink }) {
   return (
     <>
       <h2 className="peri">{l.ws ? 'WebSocket 링크' : '링크'} <small>Lv{l.level + 1}</small></h2>
+      {!l.draining && <Upgrade g={g} cost={l.upgrade} level={l.level} onClick={() => g.send('upgradeLink', { id: l.id })} gains={[['초당 전송', `${l.cap} → ${l.nextCap}`]]} />}
+      {l.wsNext && <Upgrade g={g} cost={l.wsNext.cost} title="WebSocket으로 전환" icon={<Cable size={17} aria-hidden />} onClick={() => g.send('websocket', { id: l.id })}
+        gains={[['초당 전송', `${l.cap} → ${l.wsNext.cap}`], ['이동 (편도)', `${sec(l.travel)} → ${sec(l.wsNext.travel)}`], ['이 링크의 처리 수익', `${g.config.wsRevenue / 100}배`]]} />}
       <p className="muted">{a && nodeName(a)} <span aria-hidden>⇄</span> {b && nodeName(b)}</p>
       <p className={l.state === 'full' || l.state === 'blocked' ? 'bad' : 'muted'}>
         {l.state === 'blocked' ? '장애로 끊겨 있습니다.' : l.state === 'full' ? '이 링크가 병목입니다. 전송 용량이 부족합니다.' : l.state === 'jam' ? '도착한 곳이 꽉 차서 밀려 있습니다. 원인은 링크가 아니라 그 앞쪽입니다.' : l.state === 'busy' ? '전송량이 한계에 가깝습니다.' : '여유가 있습니다.'}
@@ -90,9 +94,6 @@ function LinkInfo({ g, l }: { g: GameClient; l: GLink }) {
       <Meter label={g.head.bonus.linkRate ? `전송 용량 (초당, 개선 +${g.head.bonus.linkRate}%)` : '전송 용량 (한 차선, 초당)'} value={l.used} max={l.cap} tone="peri" />
       <Meter label="링크 위에 있는 요청" value={l.moving[0]} max={l.room} tone="coral" />
       <dl><Row k="돌아오는 응답" v={l.moving[1]} /><Row k="이동 시간 (편도)" v={sec(l.travel)} /><Row k="나가려고 기다림" v={l.waiting} w={l.waiting > 1} /><Row k="지나간 요청" v={l.passed} /></dl>
-      {!l.draining && <Upgrade g={g} cost={l.upgrade} level={l.level} onClick={() => g.send('upgradeLink', { id: l.id })} gains={[['초당 전송', `${l.cap} → ${l.nextCap}`]]} />}
-      {l.wsNext && <Upgrade g={g} cost={l.wsNext.cost} title="WebSocket으로 전환" icon={<Cable size={17} aria-hidden />} onClick={() => g.send('websocket', { id: l.id })}
-        gains={[['초당 전송', `${l.cap} → ${l.wsNext.cap}`], ['이동 (편도)', `${sec(l.travel)} → ${sec(l.wsNext.travel)}`], ['이 링크의 처리 수익', `${g.config.wsRevenue / 100}배`]]} />}
     </>
   )
 }

@@ -35,6 +35,7 @@ export class Board {
   onSelect: (s: Selection) => void = () => {}
   onTool: (t: Tool) => void = () => {}
   onZoom: (zoomed: boolean) => void = () => {}
+  onHold: (held: boolean) => void = () => {} // 보드를 누르고 있는 동안 참이다. 그동안 저절로 뜨는 창을 미룬다
   cover = 0 // 작은 화면에서 위쪽 안내가 가리는 높이
   under = 0 // 작은 화면에서 아래쪽 알림이 가리는 높이
   private ctx: CanvasRenderingContext2D
@@ -63,6 +64,7 @@ export class Board {
   private pinch: { d: number; x: number; y: number } | null = null
   private pan: { x: number; y: number; vx: number; vy: number; moved: boolean } | null = null
   private off: (() => void)[] = []
+  private held = false
 
   constructor(private cv: HTMLCanvasElement, private game: GameClient) {
     this.ctx = cv.getContext('2d')!
@@ -73,8 +75,9 @@ export class Board {
     }
     on('pointerdown', (e) => this.down(e))
     on('pointermove', (e) => this.move(e))
-    on('pointerup', (e) => this.up(e))
-    on('pointercancel', (e) => { this.pointers.delete(e.pointerId); this.drag = this.pan = null; if (!this.pointers.size) this.pinch = null })
+    on('pointerup', (e) => { this.up(e); this.release() })
+    on('pointercancel', (e) => { this.pointers.delete(e.pointerId); this.drag = this.pan = null; if (!this.pointers.size) this.pinch = null; this.release() })
+    on('lostpointercapture', (e) => { this.pointers.delete(e.pointerId); this.release() }) // 손을 뗀 이벤트를 놓쳐도 창이 계속 미뤄지지 않게 한다
     on('touchend', (e) => { if (e.cancelable) e.preventDefault() }) // 방금 열린 패널의 버튼까지 같은 터치로 눌리지 않게 한다
     on('pointerleave', () => { this.mouse.inside = false })
     on('contextmenu', (e) => { e.preventDefault(); if (this.touch) return; this.drag = null; this.onTool('connect') }) // 길게 누르기로 끌기가 끊기지 않게 한다
@@ -89,6 +92,9 @@ export class Board {
   }
 
   destroy() { cancelAnimationFrame(this.raf); this.off.forEach((f) => f()) }
+  private hold(on: boolean) { if (on !== this.held) { this.held = on; this.onHold(on) } }
+  // 끌기를 놓는 명령을 먼저 보낸 뒤에 미뤄 둔 창이 뜬다.
+  private release() { if (!this.pointers.size) this.hold(false) }
   cancel() { this.drag = null }
   frame() { const c = this.cam; return { x: this.ox + c.x * this.S, y: this.oy + c.y * this.S, w: c.w * this.S, h: c.h * this.S } }
   resetView() { this.view = { z: 1, x: 0, y: 0 } }
@@ -120,14 +126,20 @@ export class Board {
     this.resets = this.game.resets
     this.cam.x += (a.x - this.cam.x) * k; this.cam.y += (a.y - this.cam.y) * k
     this.cam.w += (a.w - this.cam.w) * k; this.cam.h += (a.h - this.cam.h) * k
-    // 패널이 열리면 보드를 옆으로 비켜 가려지는 노드가 없게 한다.
     const side = compact ? 8 : 28, left = compact && !tall ? 98 : side, sel = this.ui.selection
     const open = sel && (sel.type === 'node' ? this.game.nodes : this.game.links).has(sel.id)
     const ease = Math.min(1, dt * 9)
-    const beside = compact ? !tall : w > 900
-    this.right += ((open && beside ? (compact ? 266 : 326) : compact && tall ? 54 : side) - this.right) * ease
     this.top += ((compact ? Math.max(60, this.cover) : 104) - this.top) * ease
     this.bottom += ((compact ? Math.max(tall ? 92 : 10, this.under) : 104) - this.bottom) * ease
+    // 큰 화면에서는 패널을 열고 닫아도 보드가 움직이지 않아, 이어서 누를 노드가 제자리에 있다. 패널 자리를 비워도
+    // 보드가 거의 작아지지 않으면 늘 비워 두고, 많이 작아지면 패널이 보드 위에 뜬다. 가로 휴대폰은 좁아서 열 때만 비킨다.
+    let right = compact && tall ? 54 : side
+    if (compact && !tall) right = open ? 266 : side
+    else if (!compact && w > 900) {
+      const cell = (r: number) => Math.min(MAX_CELL, (w - left - r) / a.w, (h - this.top - this.bottom) / a.h)
+      if (cell(326) >= cell(side) * 0.9) right = 326
+    }
+    this.right = fresh ? right : this.right + (right - this.right) * ease
     const usable = w - left - this.right, room = h - this.top - this.bottom
     const S = Math.max(4, Math.min(MAX_CELL, usable / this.cam.w, room / this.cam.h))
     this.fit = { S, cx: left + usable / 2, cy: this.top + room / 2, max: Math.max(1, MAX_CELL / S) }
@@ -205,6 +217,7 @@ export class Board {
     if (e.button !== 0 || !this.game.ready || this.game.head.over) return
     const { x, y } = this.pos(e)
     this.cv.setPointerCapture(e.pointerId)
+    this.hold(true)
     this.touch = e.pointerType !== 'mouse'
     this.pointers.set(e.pointerId, { x, y })
     if (this.pointers.size > 1) {
@@ -317,6 +330,7 @@ export class Board {
     g.fillStyle = C.paper
     g.fillRect(0, 0, this.cv.clientWidth, this.cv.clientHeight)
     this.ground()
+    this.reserved()
     for (const id of this.paths.keys()) if (!this.game.links.has(id)) this.paths.delete(id)
     const links = [...this.game.links.values()]
     const drag = this.drag?.moved ? this.game.nodes.get(this.drag.from) : undefined
@@ -715,6 +729,19 @@ export class Board {
       }
       g.globalAlpha = 1
     }
+  }
+
+  // 아직 예고 전이지만 클라이언트가 들어올 자리. 서버를 놓을 수 없으므로 처음부터 흐리게 보여 주고, 지을 때는 더 진하게 보인다.
+  private reserved() {
+    const g = this.ctx, { config, head } = this.game, a = head.area, nodes = [...this.game.nodes.values()]
+    g.strokeStyle = C.coral; g.lineWidth = 1.5; g.setLineDash([4, 5])
+    g.globalAlpha = this.ui.tool === 'connect' ? 0.3 : 0.65
+    for (const s of config.sources) {
+      const taken = nodes.some((n) => n.x === s.x && n.y === s.y) || head.upcoming.some((u) => u.x === s.x && u.y === s.y)
+      if (taken || s.x < a.x || s.y < a.y || s.x >= a.x + a.w || s.y >= a.y + a.h) continue
+      g.beginPath(); g.arc(this.sx(s.x), this.sy(s.y), this.S * 0.62, 0, 7); g.stroke()
+    }
+    g.setLineDash([]); g.globalAlpha = 1
   }
 
   private ghostSource(u: { x: number; y: number; at: number }, now: number) {

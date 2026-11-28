@@ -1,0 +1,1118 @@
+{
+ "budget": 190,
+ "completed": 13735,
+ "health": 8250,
+ "save": {
+  "seed": 5,
+  "tick": 14000,
+  "score": 137350,
+  "log": [
+   {
+    "tick": 0,
+    "cmd": {
+     "seq": 1,
+     "type": "link",
+     "from": 2,
+     "to": 3
+    }
+   },
+   {
+    "tick": 0,
+    "cmd": {
+     "seq": 2,
+     "type": "link",
+     "from": 1,
+     "to": 2
+    }
+   },
+   {
+    "tick": 900,
+    "cmd": {
+     "seq": 3,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 1200,
+    "cmd": {
+     "seq": 4,
+     "type": "link",
+     "from": 6,
+     "to": 2
+    }
+   },
+   {
+    "tick": 1900,
+    "cmd": {
+     "seq": 5,
+     "type": "reward",
+     "index": 2
+    }
+   },
+   {
+    "tick": 2280,
+    "cmd": {
+     "seq": 6,
+     "type": "upgradeNode",
+     "id": 2
+    }
+   },
+   {
+    "tick": 2320,
+    "cmd": {
+     "seq": 7,
+     "type": "upgradeNode",
+     "id": 2
+    }
+   },
+   {
+    "tick": 2500,
+    "cmd": {
+     "seq": 8,
+     "type": "build",
+     "kind": "api",
+     "x": 8,
+     "y": 5
+    }
+   },
+   {
+    "tick": 2500,
+    "cmd": {
+     "seq": 9,
+     "type": "link",
+     "from": 1,
+     "to": 8
+    }
+   },
+   {
+    "tick": 2520,
+    "cmd": {
+     "seq": 10,
+     "type": "link",
+     "from": 8,
+     "to": 3
+    }
+   },
+   {
+    "tick": 2520,
+    "cmd": {
+     "seq": 11,
+     "type": "link",
+     "from": 6,
+     "to": 8
+    }
+   },
+   {
+    "tick": 2600,
+    "cmd": {
+     "seq": 12,
+     "type": "link",
+     "from": 12,
+     "to": 2
+    }
+   },
+   {
+    "tick": 2600,
+    "cmd": {
+     "seq": 13,
+     "type": "link",
+     "from": 12,
+     "to": 8
+    }
+   },
+   {
+    "tick": 3000,
+    "cmd": {
+     "seq": 17,
+     "type": "reward",
+     "index": 3
+    }
+   },
+   {
+    "tick": 3000,
+    "cmd": {
+     "seq": 18,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 3820,
+    "cmd": {
+     "seq": 19,
+     "type": "upgradeNode",
+     "id": 3
+    }
+   },
+   {
+    "tick": 4100,
+    "cmd": {
+     "seq": 20,
+     "type": "link",
+     "from": 15,
+     "to": 2
+    }
+   },
+   {
+    "tick": 4100,
+    "cmd": {
+     "seq": 21,
+     "type": "link",
+     "from": 15,
+     "to": 8
+    }
+   },
+   {
+    "tick": 4200,
+    "cmd": {
+     "seq": 22,
+     "type": "reward",
+     "index": 1
+    }
+   },
+   {
+    "tick": 4200,
+    "cmd": {
+     "seq": 23,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 4220,
+    "cmd": {
+     "seq": 24,
+     "type": "upgradeLink",
+     "id": 4
+    }
+   },
+   {
+    "tick": 5340,
+    "cmd": {
+     "seq": 25,
+     "type": "upgradeNode",
+     "id": 8
+    }
+   },
+   {
+    "tick": 5500,
+    "cmd": {
+     "seq": 26,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 5500,
+    "cmd": {
+     "seq": 27,
+     "type": "reward",
+     "index": 1
+    }
+   },
+   {
+    "tick": 5520,
+    "cmd": {
+     "seq": 28,
+     "type": "upgradeNode",
+     "id": 8
+    }
+   },
+   {
+    "tick": 5580,
+    "cmd": {
+     "seq": 29,
+     "type": "upgradeLink",
+     "id": 7
+    }
+   },
+   {
+    "tick": 5580,
+    "cmd": {
+     "seq": 30,
+     "type": "upgradeLink",
+     "id": 13
+    }
+   },
+   {
+    "tick": 5620,
+    "cmd": {
+     "seq": 31,
+     "type": "build",
+     "kind": "api",
+     "x": 8,
+     "y": 9
+    }
+   },
+   {
+    "tick": 5620,
+    "cmd": {
+     "seq": 32,
+     "type": "link",
+     "from": 1,
+     "to": 18
+    }
+   },
+   {
+    "tick": 5640,
+    "cmd": {
+     "seq": 33,
+     "type": "link",
+     "from": 18,
+     "to": 3
+    }
+   },
+   {
+    "tick": 5640,
+    "cmd": {
+     "seq": 34,
+     "type": "build",
+     "kind": "api",
+     "x": 10,
+     "y": 5
+    }
+   },
+   {
+    "tick": 5640,
+    "cmd": {
+     "seq": 35,
+     "type": "link",
+     "from": 1,
+     "to": 21
+    }
+   },
+   {
+    "tick": 5660,
+    "cmd": {
+     "seq": 36,
+     "type": "link",
+     "from": 21,
+     "to": 3
+    }
+   },
+   {
+    "tick": 5660,
+    "cmd": {
+     "seq": 37,
+     "type": "upgradeNode",
+     "id": 3
+    }
+   },
+   {
+    "tick": 5660,
+    "cmd": {
+     "seq": 38,
+     "type": "upgradeLink",
+     "id": 10
+    }
+   },
+   {
+    "tick": 5700,
+    "cmd": {
+     "seq": 39,
+     "type": "link",
+     "from": 24,
+     "to": 2
+    }
+   },
+   {
+    "tick": 5700,
+    "cmd": {
+     "seq": 40,
+     "type": "link",
+     "from": 24,
+     "to": 21
+    }
+   },
+   {
+    "tick": 6340,
+    "cmd": {
+     "seq": 41,
+     "type": "storage",
+     "id": 3
+    }
+   },
+   {
+    "tick": 6900,
+    "cmd": {
+     "seq": 42,
+     "type": "reward",
+     "index": 4
+    }
+   },
+   {
+    "tick": 6900,
+    "cmd": {
+     "seq": 43,
+     "type": "reward",
+     "index": 3
+    }
+   },
+   {
+    "tick": 7000,
+    "cmd": {
+     "seq": 44,
+     "type": "link",
+     "from": 27,
+     "to": 8
+    }
+   },
+   {
+    "tick": 7000,
+    "cmd": {
+     "seq": 45,
+     "type": "link",
+     "from": 27,
+     "to": 18
+    }
+   },
+   {
+    "tick": 7600,
+    "cmd": {
+     "seq": 46,
+     "type": "storage",
+     "id": 3
+    }
+   },
+   {
+    "tick": 8080,
+    "cmd": {
+     "seq": 47,
+     "type": "link",
+     "from": 30,
+     "to": 2
+    }
+   },
+   {
+    "tick": 8080,
+    "cmd": {
+     "seq": 48,
+     "type": "link",
+     "from": 30,
+     "to": 21
+    }
+   },
+   {
+    "tick": 8240,
+    "cmd": {
+     "seq": 49,
+     "type": "build",
+     "kind": "redis",
+     "x": 10,
+     "y": 9
+    }
+   },
+   {
+    "tick": 8240,
+    "cmd": {
+     "seq": 50,
+     "type": "link",
+     "from": 2,
+     "to": 33
+    }
+   },
+   {
+    "tick": 8240,
+    "cmd": {
+     "seq": 51,
+     "type": "link",
+     "from": 8,
+     "to": 33
+    }
+   },
+   {
+    "tick": 8240,
+    "cmd": {
+     "seq": 52,
+     "type": "link",
+     "from": 18,
+     "to": 33
+    }
+   },
+   {
+    "tick": 8240,
+    "cmd": {
+     "seq": 53,
+     "type": "link",
+     "from": 21,
+     "to": 33
+    }
+   },
+   {
+    "tick": 8400,
+    "cmd": {
+     "seq": 54,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 8400,
+    "cmd": {
+     "seq": 55,
+     "type": "reward",
+     "index": 3
+    }
+   },
+   {
+    "tick": 8400,
+    "cmd": {
+     "seq": 56,
+     "type": "websocket",
+     "id": 11
+    }
+   },
+   {
+    "tick": 8420,
+    "cmd": {
+     "seq": 57,
+     "type": "websocket",
+     "id": 19
+    }
+   },
+   {
+    "tick": 8440,
+    "cmd": {
+     "seq": 58,
+     "type": "websocket",
+     "id": 13
+    }
+   },
+   {
+    "tick": 8480,
+    "cmd": {
+     "seq": 59,
+     "type": "websocket",
+     "id": 16
+    }
+   },
+   {
+    "tick": 8820,
+    "cmd": {
+     "seq": 60,
+     "type": "websocket",
+     "id": 28
+    }
+   },
+   {
+    "tick": 9140,
+    "cmd": {
+     "seq": 61,
+     "type": "link",
+     "from": 38,
+     "to": 21
+    }
+   },
+   {
+    "tick": 9140,
+    "cmd": {
+     "seq": 62,
+     "type": "link",
+     "from": 38,
+     "to": 2
+    }
+   },
+   {
+    "tick": 9440,
+    "cmd": {
+     "seq": 63,
+     "type": "websocket",
+     "id": 14
+    }
+   },
+   {
+    "tick": 9760,
+    "cmd": {
+     "seq": 64,
+     "type": "websocket",
+     "id": 25
+    }
+   },
+   {
+    "tick": 9900,
+    "cmd": {
+     "seq": 65,
+     "type": "reward"
+    }
+   },
+   {
+    "tick": 9900,
+    "cmd": {
+     "seq": 66,
+     "type": "reward",
+     "index": 1
+    }
+   },
+   {
+    "tick": 9900,
+    "cmd": {
+     "seq": 67,
+     "type": "websocket",
+     "id": 32
+    }
+   },
+   {
+    "tick": 10180,
+    "cmd": {
+     "seq": 68,
+     "type": "link",
+     "from": 41,
+     "to": 18
+    }
+   },
+   {
+    "tick": 10180,
+    "cmd": {
+     "seq": 69,
+     "type": "link",
+     "from": 41,
+     "to": 2
+    }
+   },
+   {
+    "tick": 10240,
+    "cmd": {
+     "seq": 70,
+     "type": "websocket",
+     "id": 40
+    }
+   },
+   {
+    "tick": 10560,
+    "cmd": {
+     "seq": 71,
+     "type": "storage",
+     "id": 3
+    }
+   },
+   {
+    "tick": 10700,
+    "cmd": {
+     "seq": 72,
+     "type": "websocket",
+     "id": 17
+    }
+   },
+   {
+    "tick": 10760,
+    "cmd": {
+     "seq": 73,
+     "type": "websocket",
+     "id": 42
+    }
+   },
+   {
+    "tick": 11040,
+    "cmd": {
+     "seq": 74,
+     "type": "websocket",
+     "id": 9
+    }
+   },
+   {
+    "tick": 11200,
+    "cmd": {
+     "seq": 75,
+     "type": "link",
+     "from": 44,
+     "to": 18
+    }
+   },
+   {
+    "tick": 11200,
+    "cmd": {
+     "seq": 76,
+     "type": "link",
+     "from": 44,
+     "to": 8
+    }
+   },
+   {
+    "tick": 11400,
+    "cmd": {
+     "seq": 77,
+     "type": "reward",
+     "index": 4
+    }
+   },
+   {
+    "tick": 11400,
+    "cmd": {
+     "seq": 78,
+     "type": "reward",
+     "index": 2
+    }
+   },
+   {
+    "tick": 11460,
+    "cmd": {
+     "seq": 79,
+     "type": "websocket",
+     "id": 45
+    }
+   },
+   {
+    "tick": 12200,
+    "cmd": {
+     "seq": 80,
+     "type": "link",
+     "from": 47,
+     "to": 2
+    }
+   },
+   {
+    "tick": 12200,
+    "cmd": {
+     "seq": 81,
+     "type": "link",
+     "from": 47,
+     "to": 21
+    }
+   },
+   {
+    "tick": 12260,
+    "cmd": {
+     "seq": 82,
+     "type": "websocket",
+     "id": 48
+    }
+   },
+   {
+    "tick": 12340,
+    "cmd": {
+     "seq": 83,
+     "type": "build",
+     "kind": "api",
+     "x": 6,
+     "y": 3
+    }
+   },
+   {
+    "tick": 12340,
+    "cmd": {
+     "seq": 84,
+     "type": "link",
+     "from": 6,
+     "to": 50
+    }
+   },
+   {
+    "tick": 12360,
+    "cmd": {
+     "seq": 85,
+     "type": "link",
+     "from": 50,
+     "to": 3
+    }
+   },
+   {
+    "tick": 12360,
+    "cmd": {
+     "seq": 86,
+     "type": "link",
+     "from": 50,
+     "to": 33
+    }
+   },
+   {
+    "tick": 12380,
+    "cmd": {
+     "seq": 87,
+     "type": "websocket",
+     "id": 51
+    }
+   },
+   {
+    "tick": 12900,
+    "cmd": {
+     "seq": 88,
+     "type": "reward",
+     "index": 1
+    }
+   },
+   {
+    "tick": 12900,
+    "cmd": {
+     "seq": 89,
+     "type": "reward",
+     "index": 3
+    }
+   },
+   {
+    "tick": 13000,
+    "cmd": {
+     "seq": 90,
+     "type": "build",
+     "kind": "api",
+     "x": 7,
+     "y": 7
+    }
+   },
+   {
+    "tick": 13000,
+    "cmd": {
+     "seq": 91,
+     "type": "link",
+     "from": 1,
+     "to": 54
+    }
+   },
+   {
+    "tick": 13020,
+    "cmd": {
+     "seq": 92,
+     "type": "link",
+     "from": 54,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13020,
+    "cmd": {
+     "seq": 93,
+     "type": "build",
+     "kind": "redis",
+     "x": 12,
+     "y": 5
+    }
+   },
+   {
+    "tick": 13020,
+    "cmd": {
+     "seq": 94,
+     "type": "link",
+     "from": 54,
+     "to": 33
+    }
+   },
+   {
+    "tick": 13040,
+    "cmd": {
+     "seq": 95,
+     "type": "websocket",
+     "id": 55
+    }
+   },
+   {
+    "tick": 13180,
+    "cmd": {
+     "seq": 96,
+     "type": "link",
+     "from": 59,
+     "to": 50
+    }
+   },
+   {
+    "tick": 13180,
+    "cmd": {
+     "seq": 97,
+     "type": "link",
+     "from": 59,
+     "to": 8
+    }
+   },
+   {
+    "tick": 13220,
+    "cmd": {
+     "seq": 98,
+     "type": "websocket",
+     "id": 26
+    }
+   },
+   {
+    "tick": 13220,
+    "cmd": {
+     "seq": 99,
+     "type": "build",
+     "kind": "api",
+     "x": 12,
+     "y": 9
+    }
+   },
+   {
+    "tick": 13220,
+    "cmd": {
+     "seq": 100,
+     "type": "link",
+     "from": 1,
+     "to": 62
+    }
+   },
+   {
+    "tick": 13240,
+    "cmd": {
+     "seq": 101,
+     "type": "link",
+     "from": 62,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13240,
+    "cmd": {
+     "seq": 102,
+     "type": "link",
+     "from": 62,
+     "to": 33
+    }
+   },
+   {
+    "tick": 13240,
+    "cmd": {
+     "seq": 103,
+     "type": "websocket",
+     "id": 39
+    }
+   },
+   {
+    "tick": 13240,
+    "cmd": {
+     "seq": 104,
+     "type": "build",
+     "kind": "api",
+     "x": 6,
+     "y": 11
+    }
+   },
+   {
+    "tick": 13240,
+    "cmd": {
+     "seq": 105,
+     "type": "link",
+     "from": 1,
+     "to": 66
+    }
+   },
+   {
+    "tick": 13260,
+    "cmd": {
+     "seq": 106,
+     "type": "link",
+     "from": 66,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13260,
+    "cmd": {
+     "seq": 107,
+     "type": "link",
+     "from": 66,
+     "to": 33
+    }
+   },
+   {
+    "tick": 13260,
+    "cmd": {
+     "seq": 108,
+     "type": "websocket",
+     "id": 49
+    }
+   },
+   {
+    "tick": 13260,
+    "cmd": {
+     "seq": 109,
+     "type": "upgradeNode",
+     "id": 2
+    }
+   },
+   {
+    "tick": 13280,
+    "cmd": {
+     "seq": 110,
+     "type": "build",
+     "kind": "api",
+     "x": 10,
+     "y": 3
+    }
+   },
+   {
+    "tick": 13280,
+    "cmd": {
+     "seq": 111,
+     "type": "link",
+     "from": 1,
+     "to": 70
+    }
+   },
+   {
+    "tick": 13300,
+    "cmd": {
+     "seq": 112,
+     "type": "link",
+     "from": 70,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13300,
+    "cmd": {
+     "seq": 113,
+     "type": "link",
+     "from": 70,
+     "to": 57
+    }
+   },
+   {
+    "tick": 13300,
+    "cmd": {
+     "seq": 114,
+     "type": "build",
+     "kind": "api",
+     "x": 10,
+     "y": 11
+    }
+   },
+   {
+    "tick": 13300,
+    "cmd": {
+     "seq": 115,
+     "type": "link",
+     "from": 1,
+     "to": 74
+    }
+   },
+   {
+    "tick": 13320,
+    "cmd": {
+     "seq": 116,
+     "type": "link",
+     "from": 74,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13320,
+    "cmd": {
+     "seq": 117,
+     "type": "link",
+     "from": 74,
+     "to": 33
+    }
+   },
+   {
+    "tick": 13320,
+    "cmd": {
+     "seq": 118,
+     "type": "build",
+     "kind": "api",
+     "x": 12,
+     "y": 3
+    }
+   },
+   {
+    "tick": 13320,
+    "cmd": {
+     "seq": 119,
+     "type": "link",
+     "from": 1,
+     "to": 78
+    }
+   },
+   {
+    "tick": 13340,
+    "cmd": {
+     "seq": 120,
+     "type": "link",
+     "from": 78,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13340,
+    "cmd": {
+     "seq": 121,
+     "type": "link",
+     "from": 78,
+     "to": 57
+    }
+   },
+   {
+    "tick": 13340,
+    "cmd": {
+     "seq": 122,
+     "type": "build",
+     "kind": "api",
+     "x": 12,
+     "y": 11
+    }
+   },
+   {
+    "tick": 13340,
+    "cmd": {
+     "seq": 123,
+     "type": "link",
+     "from": 1,
+     "to": 82
+    }
+   },
+   {
+    "tick": 13360,
+    "cmd": {
+     "seq": 124,
+     "type": "link",
+     "from": 82,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13360,
+    "cmd": {
+     "seq": 125,
+     "type": "link",
+     "from": 82,
+     "to": 33
+    }
+   },
+   {
+    "tick": 13360,
+    "cmd": {
+     "seq": 126,
+     "type": "build",
+     "kind": "api",
+     "x": 14,
+     "y": 3
+    }
+   },
+   {
+    "tick": 13380,
+    "cmd": {
+     "seq": 128,
+     "type": "link",
+     "from": 86,
+     "to": 3
+    }
+   },
+   {
+    "tick": 13400,
+    "cmd": {
+     "seq": 131,
+     "type": "link",
+     "from": 86,
+     "to": 57
+    }
+   },
+   {
+    "tick": 13480,
+    "cmd": {
+     "seq": 136,
+     "type": "upgradeLink",
+     "id": 40
+    }
+   },
+   {
+    "tick": 13560,
+    "cmd": {
+     "seq": 141,
+     "type": "upgradeNode",
+     "id": 21
+    }
+   },
+   {
+    "tick": 13780,
+    "cmd": {
+     "seq": 145,
+     "type": "upgradeLink",
+     "id": 10
+    }
+   }
+  ]
+ }
+}

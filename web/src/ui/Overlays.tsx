@@ -7,7 +7,8 @@ import { Boosts } from './Growth'
 import { WhenToGrow } from './Lesson'
 import { Toggles } from './Toggles'
 import { useFit } from './fit'
-import { shareImage, type Frame } from './shot'
+import { useSettle } from './settle'
+import { resultTag, shareImage, type Frame } from './shot'
 
 const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) => string }> = {
   budget: { icon: <Coins />, name: '클라우드 크레딧', text: (n) => `예산을 ${n} 받습니다` },
@@ -23,7 +24,7 @@ const REWARD: Record<string, { icon: ReactNode; name: string; text: (n: number) 
 }
 
 export function RewardModal({ g }: { g: GameClient }) {
-  const r = g.head.reward, fit = useFit()
+  const r = g.head.reward, fit = useFit(), settle = useSettle(!!r)
   const [picked, setPicked] = useState<number[]>([])
   const ref = useRef<HTMLButtonElement>(null)
   useEffect(() => { setPicked([]); ref.current?.focus() }, [r?.phase])
@@ -36,7 +37,7 @@ export function RewardModal({ g }: { g: GameClient }) {
   }
   const take = () => picked.forEach((i) => g.send('reward', { index: i }))
   return (
-    <div className="veil" role="dialog" aria-modal aria-label="구간 보상">
+    <div className="veil" role="dialog" aria-modal aria-label="구간 보상" onClickCapture={settle}>
       <div ref={fit} className="modal reward" data-n={r.options.length}>
         <h2>{r.phase}번째 구간을 버텼습니다</h2>
         <ul className="earned">
@@ -63,7 +64,8 @@ export function RewardModal({ g }: { g: GameClient }) {
 
 // 폰에서는 공유 창을 열고, 그 밖에서는 복사한다. 앱 안의 브라우저는 공유와 클립보드를 막기도 해서 예전 복사 방식까지 쓴다.
 async function shareResult(r: Result, g: GameClient): Promise<string> {
-  const text = `[Serverway] ${r.score.toLocaleString()}점${g.odd ? ' (AI 등의 화면 어뷰징 의심)' : g.chosen ? ` (시드 ${r.seed} 연습)` : ''}\n${clockText(r.seconds)} 동안 버텨 ${r.rank}까지 키웠습니다!\n당신의 관리능력을 테스트해보세요!\n${import.meta.env.VITE_SITE_URL}`
+  const tag = resultTag(r, g)
+  const text = `[Serverway] ${r.score.toLocaleString()}점${tag && ` (${tag})`}\n${clockText(r.seconds)} 동안 버텨 ${r.rank}까지 키웠습니다!\n당신의 관리능력을 테스트해보세요!\n${import.meta.env.VITE_SITE_URL}`
   const copied = '기록을 복사했습니다. 카톡이나 메신저에 붙여 넣으세요.'
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
     try { await navigator.share({ text }); return '' } catch (e) { if ((e as Error).name === 'AbortError') return '' }
@@ -79,7 +81,7 @@ async function shareResult(r: Result, g: GameClient): Promise<string> {
 }
 
 export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; onHome: () => void; onRestart: (seed?: number) => void; frame: () => Frame | undefined }) {
-  const r = g.result, fit = useFit()
+  const r = g.result, fit = useFit(), settle = useSettle(!!r)
   const [best, setBest] = useState<{ old: Best | null; isNew: boolean } | null>(null)
   const [note, setNote] = useState('')
   const [shot, setShot] = useState('')
@@ -95,11 +97,15 @@ export function ResultModal({ g, onHome, onRestart, frame }: { g: GameClient; on
   const image = async () => { const a = await shareImage(r, g, frame()).catch(() => ({ note: '이미지를 만들지 못했습니다. 화면을 캡처해 주세요.', show: '' })); setNote(a.note); setShot(a.show ?? '') }
   const total = r.failures.reduce((a, b) => a + b, 0)
   const rate = r.completed + total ? (r.completed / (r.completed + total)) * 100 : 0
+  const tag = resultTag(r, g)
   return (
-    <div className="veil" role="dialog" aria-modal aria-label="결과">
+    <div className="veil" role="dialog" aria-modal aria-label="결과" onClickCapture={settle}>
       <div ref={fit} className="modal result">
         <div className="half">
-        <span className={`outcome ${r.over === 'done' ? 'good' : 'bad'}`}>{r.over === 'done' ? <Flag size={18} aria-hidden /> : <CircleX size={18} aria-hidden />}<span>{r.over === 'done' ? '마라톤을 마쳤습니다' : '서비스가 멈췄습니다'}</span></span>
+        <div className="heads">
+          <span className={`outcome ${r.over === 'done' ? 'good' : 'bad'}`}>{r.over === 'done' ? <Flag size={18} aria-hidden /> : <CircleX size={18} aria-hidden />}<span>{r.over === 'done' ? '마라톤을 마쳤습니다' : '서비스가 멈췄습니다'}</span></span>
+          {tag && <b className="stamp">{tag}</b>}
+        </div>
         <h2>{clockText(r.seconds)} 동안 달려 {r.rank}까지 키웠습니다</h2>
         <div className="score">{r.score.toLocaleString()}<small>점</small></div>
         {best && (best.isNew ? <p className="newbest"><Trophy size={17} aria-hidden />최고 기록입니다{best.old ? ` (이전 ${best.old.score.toLocaleString()}점)` : ''}</p> : best.old && <p className="muted">최고 기록 {best.old.score.toLocaleString()}점, {clockText(best.old.seconds)}</p>)}
@@ -181,8 +187,8 @@ export function Help({ g, onClose }: { g: GameClient; onClose: () => void }) {
           <li><b>경로 선택:</b> 지금 보낼 수 있는 링크 중 이동 시간과 도착지 예상 대기를 더한 값이 가장 짧은 곳으로 갑니다. 같으면 먼저 만든 링크입니다.</li>
           <li><b>처리 용량:</b> 서버와 DB 안의 칸이 동시에 처리하는 수, 둘레의 구슬이 대기열입니다. 대기열이 꽉 차면 링크 위에서 기다립니다.</li>
           <li><b>링크 용량:</b> 한 차선이 초당 보낼 수 있는 수입니다. 가는 차선과 돌아오는 차선은 따로입니다.</li>
-          <li><b>실패:</b> 502 경로 없음, 503 클라이언트 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다. {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
-          <li><b>시드:</b> 보상 후보, 장애, 나중에 생기는 클라이언트 위치 같은 운을 정하는 번호입니다. 같은 시드에 같은 플레이면 똑같이 진행되고, 다르게 플레이하면 뒤로 갈수록 달라집니다. 하던 판을 계속하는 이어서 하기와는 다릅니다. 번호를 직접 넣거나 같은 시드로 다시 시작한 판은 연습이라 최고 기록에 남지 않습니다.</li>
+          <li><b>실패:</b> 502 경로 없음, 503 클라이언트 대기열 초과, 504 처리 기한({g.head.deadline}초) 초과, 500 장애. 실패 하나에 서비스 상태가 {c.failPenalty / 1000}% 줄고, 장애 중에는 그 {c.faultPercent}%만 줄어듭니다.{c.lossPerSec > 0 && ` 실패가 한꺼번에 몰려도 1초에 ${c.lossPerSec / 1000}%까지만 줄어듭니다.`} {c.practice ? '튜토리얼에서는 지지 않습니다.' : `처음 ${c.learnSeconds}초는 지지 않습니다.`}</li>
+          <li><b>시드:</b> 운을 정하는 번호입니다. 같은 시드면 어떻게 플레이하든 구간 보상 카드와 장애가 오는 순서가 같습니다. 이미 최대라 더 좋아질 수 없는 보상은 빠집니다. 장애가 걸리는 서버나 링크, 새 클라이언트가 실제로 놓이는 자리는 지어 둔 것을 보고 정하므로 플레이에 따라 달라질 수 있습니다. 하던 판을 계속하는 이어서 하기와는 다릅니다. 번호를 직접 넣거나 같은 시드로 다시 시작한 판은 연습이라 최고 기록에 남지 않습니다.</li>
           <li><b>철거:</b> 새 요청만 막고 이미 나간 요청이 돌아온 뒤 사라집니다. 비용의 {c.refundPercent}%를 돌려받습니다.</li>
           <li><b>장애:</b> 시작 전에 예고합니다. 대상은 많이 쓰는 서버나 링크입니다.</li>
           <li>선이 교차해도 이어지지 않습니다. 실제 네트워크를 단순하게 만든 게임 규칙이며 재시도, 로드밸런서, 데이터 일관성은 다루지 않습니다.</li>

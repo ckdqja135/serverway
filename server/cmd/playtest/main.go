@@ -18,6 +18,7 @@ func replay(path string) {
 	}
 	var in struct {
 		Seed  uint64         `json:"seed"`
+		Rules int            `json:"rules"`
 		Tick  int            `json:"tick"`
 		Score int            `json:"score"`
 		Log   []sim.LogEntry `json:"log"`
@@ -25,7 +26,11 @@ func replay(path string) {
 	if err := json.Unmarshal(b, &in); err != nil {
 		log.Fatal(err)
 	}
-	s := sim.Replay(sim.Default(), in.Seed, in.Log, in.Tick)
+	cfg, err := sim.ForRules(sim.Default(), in.Rules)
+	if err != nil {
+		log.Fatal(err)
+	}
+	s := sim.Replay(cfg, in.Seed, in.Log, in.Tick)
 	fmt.Printf("기록 %d점, 다시 계산 %d점, %d틱, 실패 %v, 일치 %v\n", in.Score, s.Score, s.Tick, s.Failures, in.Score == s.Score && in.Tick == s.Tick)
 }
 

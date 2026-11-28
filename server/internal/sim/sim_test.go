@@ -721,6 +721,13 @@ func TestRewardChoices(t *testing.T) {
 			g.Advance(1)
 			g.Health = g.Cfg.Health.Max
 		}
+		if phase == 1 {
+			// 보상 창이 뜨기 직전에 시작한 끌기는 이어지고, 짓기는 보상을 고른 뒤에 한다.
+			g.must(Command{Type: "link", From: g.src.ID, To: g.api.ID})
+			if g.cmd(Command{Type: "build", X: 10, Y: 10}).OK {
+				t.Fatal("보상을 고르기 전에는 지을 수 없어야 함")
+			}
+		}
 		p, n, left := g.Pending, min(phase+1, 5), 1
 		if n >= 4 {
 			left = 2
@@ -745,5 +752,58 @@ func TestRewardChoices(t *testing.T) {
 		if g.Pending != nil {
 			t.Fatal("다 골랐으면 이어져야 함")
 		}
+	}
+}
+
+// 같은 시드면 어떻게 플레이하든 보상 카드와 장애 종류가 같다.
+func TestSeedFixesLuck(t *testing.T) {
+	play := func(b Bot) (cards, faults []string) {
+		c := Default()
+		c.Health.FailPenalty, c.Unlock.Storage = 0, 0 // 빠지는 보상이 플레이에 따라 달라지지 않게 한다
+		s := New(c, 42)
+		b.do(s, Command{Type: "pause", On: false})
+		seen := map[int]bool{}
+		for s.Tick < 900*TPS {
+			if s.Pending != nil {
+				for _, o := range s.Pending.Options {
+					cards = append(cards, o.ID)
+				}
+				cards = append(cards, "|")
+			}
+			b.Act(s)
+			s.Advance(TPS)
+			s.Take()
+			for _, f := range s.Faults {
+				if !seen[f.ID] {
+					seen[f.ID] = true
+					faults = append(faults, f.Def.Type)
+				}
+			}
+		}
+		return
+	}
+	c1, f1 := play(Bot{Link: true})
+	c2, f2 := play(Bot{Link: true, API: true, DB: true, LinkUp: true, Reroute: true, Redis: true})
+	if !reflect.DeepEqual(c1, c2) || !reflect.DeepEqual(f1, f2) || len(f1) < 8 {
+		t.Fatalf("같은 시드인데 운이 다름\n%v\n%v\n%v\n%v", c1, c2, f1, f2)
+	}
+}
+
+// 실패가 몰려도 1초에 잃는 서비스 상태에는 상한이 있다.
+func TestLossCapPerSecond(t *testing.T) {
+	g := setup(t, func(c *Config) {
+		c.Health.FailPenalty, c.Health.MaxLossPerSec = 5000, 3000
+		c.Sources[0].Rate = [][2]int{{0, 8000}}
+	})
+	prev, lost := g.Health, 0
+	for range 10 {
+		g.run(1)
+		if lost = prev - g.Health; lost > 3000 {
+			t.Fatalf("1초에 %d 잃음", lost)
+		}
+		prev = g.Health
+	}
+	if lost != 3000 {
+		t.Fatalf("상한까지는 잃어야 함: 마지막 1초 %d", lost)
 	}
 }

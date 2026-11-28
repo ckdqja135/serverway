@@ -51,6 +51,8 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   const [zoomed, setZoomed] = useState(false)
   const [menu, setMenu] = useState(false)
   const [help, setHelp] = useState(false)
+  const [held, setHeld] = useState(false) // 보드를 누르고 있음. 끌던 링크가 끊기지 않게 저절로 뜨는 창을 손을 뗄 때까지 미룬다
+  const [away, setAway] = useState(false) // 다른 탭으로 가서 저절로 멈췄음
   const [tutorial, setTut] = useState(() => pref('serverway.tutorial', true))
   const [log, setLogOn] = useState(() => pref('serverway.log', true))
   const setTutorial = (b: boolean) => { setTut(b); localStorage.setItem('serverway.tutorial', String(b)) }
@@ -62,10 +64,11 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
     b.onSelect = select
     b.onTool = setTool
     b.onZoom = setZoomed
+    b.onHold = setHeld
     board.current = b
     return () => { b.destroy(); g.close() }
   }, [g])
-  useEffect(() => { select(null); setTool('connect') }, [g.resets])
+  useEffect(() => { select(null); setTool('connect'); setAway(false) }, [g.resets])
   const h = g.ready ? g.head : null
   const overlay = menu || help || !!g.news
   const [hidden, setHidden] = useState(document.hidden)
@@ -95,10 +98,11 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
   // 메뉴가 열리거나 창이 가려지면 게임을 멈춘다.
   useEffect(() => { if (overlay && g.ready && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }, [overlay])
   useEffect(() => {
-    const hide = () => { setHidden(document.hidden); if (document.hidden && g.ready && g.status === 'open' && !g.head.paused && !g.head.over) g.send('pause', { on: true }) }
+    const hide = () => { setHidden(document.hidden); if (document.hidden && g.ready && g.status === 'open' && !g.head.paused && !g.head.over) { g.send('pause', { on: true }); setAway(true) } }
     document.addEventListener('visibilitychange', hide)
     return () => document.removeEventListener('visibilitychange', hide)
   }, [g])
+  useEffect(() => { if (h && !h.paused) setAway(false) }, [h?.paused])
 
   const cost = (t: Tool) => (t === 'api' ? g.head.apiCost : t === 'db' ? g.head.dbCost : t === 'redis' ? g.head.redisCost : 0)
   const build = (t: Tool) => { if (g.head.budget >= cost(t)) setTool(t); else g.say(`예산이 부족합니다 (필요 ${cost(t)}, 보유 ${g.head.budget})`, true) }
@@ -167,17 +171,17 @@ function Play1({ g, onHome, onLearned }: { g: GameClient; onHome: () => void; on
         {h.paused && !h.over && !h.reward && !overlay && (!lesson || lesson.step?.id === 'start') && (
           <div className="pausebar">
             <button className="big primary" onClick={() => g.send('pause', { on: false })}><Play size={18} aria-hidden />{h.started ? '계속하기' : '시작'}</button>
-            <span>{h.pauseReason || (h.started ? '멈춘 동안에도 건설하고 연결할 수 있습니다' : '시작하기 전에 미리 연결해 둘 수 있습니다')}</span>
+            <span>{h.pauseReason || (away ? '다른 탭이나 창으로 옮겨 가서 자동으로 멈췄습니다' : h.started ? '멈춘 동안에도 건설하고 연결할 수 있습니다' : '시작하기 전에 미리 연결해 둘 수 있습니다')}</span>
           </div>
         )}
-        <RewardModal g={g} />
+        {!held && <RewardModal g={g} />}
         <ResultModal g={g} onHome={onHome} onRestart={restart} frame={() => board.current?.frame()} />
         {lesson && !overlay && <LessonCard g={g} lesson={lesson} onSkip={onLearned} />}
         {lesson?.stage === 'intro' && <LessonIntro onNext={lesson.next} onSkip={onLearned} />}
         {lesson?.stage === 'end' && <LessonEnd onDone={onLearned} onHome={() => { setLearned(); onHome() }} />}
         {menu && <Menu g={g} onSkip={onLearned} onClose={() => setMenu(false)} onHome={onHome} onRestart={restart} tutorial={tutorial} setTutorial={setTutorial} log={log} setLog={setLog} onHelp={() => { setMenu(false); setHelp(true) }} />}
         {help && <Help g={g} onClose={() => setHelp(false)} />}
-        <News g={g} onClose={closeNews} />
+        {!held && <News g={g} onClose={closeNews} />}
         {g.notice && <div key={g.notice.id} className={`toast ${g.notice.bad ? 'bad' : ''}`} role="status">{g.notice.text}</div>}
       </>}
       {g.status !== 'open' && <div className="veil"><div className="modal small center">

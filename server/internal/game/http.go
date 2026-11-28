@@ -60,7 +60,7 @@ func Handler(m *Manager, webDir string) http.Handler {
 		}
 		ch := make(chan any, 1)
 		if !post(r.Context(), s.calls, func() {
-			ch <- map[string]any{"seed": s.sim.Seed, "tick": s.sim.Tick, "score": s.sim.Score, "log": append([]sim.LogEntry{}, s.sim.Log...)}
+			ch <- map[string]any{"seed": s.sim.Seed, "rules": s.sim.Cfg.Rules, "tick": s.sim.Tick, "score": s.sim.Score, "log": append([]sim.LogEntry{}, s.sim.Log...)}
 		}) {
 			writeJSON(w, 503, map[string]string{"error": "잠시 후 다시 시도하세요"})
 			return

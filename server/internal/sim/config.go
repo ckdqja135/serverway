@@ -13,6 +13,13 @@ const (
 	TPS    = 1000 / TickMs
 )
 
+// Rules는 지금 규칙의 판수다. 같은 기록이 다른 결과를 내게 바꾸면 하나 올리고, 예전 동작은 판수로 나눠 남겨 둔다.
+// 저장된 판은 시작한 판수의 규칙으로 다시 계산하므로, 배포 뒤에도 하던 판을 그대로 이어 간다.
+//
+//	1: 처음 판수. 저장 기록에 판수가 없으면 1이다
+//	2: 1초 손실 상한, 시드로 고정한 운(보상 카드, 장애 종류와 대상, 새 클라이언트 자리 후보)
+const Rules = 2
+
 type ServerLevel struct {
 	Slots  int `json:"slots"`
 	ProcMs int `json:"procMs"`
@@ -140,6 +147,7 @@ type Config struct {
 		FaultPercent  int `json:"faultPenaltyPercent"` // 장애가 진행 중일 때 페널티 비율
 		SuccessGain   int `json:"successGain"`
 		MaxGainPerSec int `json:"maxGainPerSec"`
+		MaxLossPerSec int `json:"maxLossPerSec"` // 1초에 잃을 수 있는 최대량. 0이면 상한이 없다
 		LearnSeconds  int `json:"learnSeconds"`
 		LearnFloor    int `json:"learnFloor"`
 	} `json:"health"`
@@ -192,6 +200,21 @@ type Config struct {
 	Faults   []FaultDef  `json:"faults"`
 	Rewards  []RewardDef `json:"rewards"`
 	Practice bool        `json:"-"` // 튜토리얼
+	Rules    int         `json:"-"` // 따르는 규칙 판수
+}
+
+// ForRules는 예전 판수로 시작한 판을 이어 하기 위해 그때의 값으로 되돌린 설정이다. 판수가 없던 기록은 1판이다.
+func ForRules(base *Config, rules int) (*Config, error) {
+	rules = max(1, rules)
+	if rules > Rules {
+		return nil, fmt.Errorf("더 새로운 규칙으로 저장된 기록입니다")
+	}
+	c := *base
+	c.Rules = rules
+	if rules < 2 {
+		c.Health.MaxLossPerSec = 0
+	}
+	return &c, nil
 }
 
 //go:embed balance.json
@@ -210,6 +233,7 @@ func Parse(data []byte) (*Config, error) {
 		len(c.Sources) == 0 || c.Link.CellsPerSec < 1 || c.Link.RoomPerCell < 1 || len(c.Areas) == 0 || c.Health.Max < 1 || len(c.Rewards) < 2 {
 		return nil, fmt.Errorf("밸런스 설정에 필요한 값이 빠져 있습니다")
 	}
+	c.Rules = Rules
 	return &c, nil
 }
 

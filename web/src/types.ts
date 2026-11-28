@@ -27,7 +27,7 @@ export interface Head {
 }
 export interface Config {
   practice: boolean; tps: number; healthMax: number; score: number; linkBase: number; linkPerCell: number
-  minNodeGap: number; maxServers: number; learnSeconds: number; startSec: number; sources: { x: number; y: number }[]; refundPercent: number; failPenalty: number; faultPercent: number
+  minNodeGap: number; maxServers: number; learnSeconds: number; startSec: number; sources: { x: number; y: number }[]; refundPercent: number; failPenalty: number; faultPercent: number; lossPerSec: number
   redisHit: number; wsSpeed: number; wsRate: number; wsRevenue: number; storageWarn: number; storageSlow: number
 }
 export interface Result {

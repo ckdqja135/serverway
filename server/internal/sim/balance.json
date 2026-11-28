@@ -16,7 +16,7 @@
   "maxServers": 80,
   "maxLinks": 400,
   "scorePerComplete": 10,
-  "health": { "max": 100000, "failPenalty": 1500, "faultPenaltyPercent": 50, "successGain": 90, "maxGainPerSec": 500, "learnSeconds": 45, "learnFloor": 60000 },
+  "health": { "max": 100000, "failPenalty": 1500, "faultPenaltyPercent": 50, "successGain": 90, "maxGainPerSec": 500, "maxLossPerSec": 3000, "learnSeconds": 45, "learnFloor": 60000 },
   "request": { "deadlineSec": 14, "maxHops": 8, "maxActive": 4000, "startSec": 4 },
   "source": { "queue": 16 },
   "api": {

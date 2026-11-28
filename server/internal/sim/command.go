@@ -77,7 +77,8 @@ func (s *Sim) exec(c Command) (int, error) {
 	if len(s.Log) >= maxLog {
 		return 0, fmt.Errorf("명령 기록 한도에 도달했습니다")
 	}
-	if s.Pending != nil && c.Type != "reward" && c.Type != "finish" && c.Type != "pause" && c.Type != "speed" {
+	// 링크는 보상 창이 뜨기 직전에 시작한 끌기를 놓는 것이라 받아 준다. 보상을 고르는 동안 시간은 멈춰 있다.
+	if s.Pending != nil && c.Type != "reward" && c.Type != "finish" && c.Type != "pause" && c.Type != "speed" && c.Type != "link" {
 		return 0, fmt.Errorf("먼저 보상을 선택하세요")
 	}
 	switch c.Type {

@@ -177,7 +177,7 @@ func (s *Session) handle(in inbound) {
 		return
 	}
 	if in.cmd.Type == "save" {
-		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.chosen, s.sim.Tick, s.sim.Score, s.sim.Log}})
+		s.send(map[string]any{"type": "save", "epoch": s.epoch, "save": Save{s.sim.Seed, s.chosen, s.sim.Cfg.Rules, s.sim.Tick, s.sim.Score, s.sim.Log}})
 		return
 	}
 	a := s.sim.Apply(in.cmd)
@@ -206,12 +206,12 @@ func (s *Session) snapshot() {
 	}
 	s.sim.Take()
 	s.dirty = false
-	c := s.cfg
+	c := s.sim.Cfg // 이어 연 예전 판은 그 판수의 값을 보여 준다
 	s.send(map[string]any{"type": "snapshot", "epoch": s.epoch, "seed": s.sim.Seed, "chosen": s.chosen, "lastSeq": s.sim.LastSeq(),
 		"config": map[string]any{"practice": c.Practice, "tps": sim.TPS, "healthMax": c.Health.Max,
 			"linkBase": c.Link.BaseCost, "linkPerCell": c.Link.PerCell, "minNodeGap": c.MinNodeGap, "maxServers": c.MaxServers,
 			"learnSeconds": c.Health.LearnSeconds, "startSec": c.Request.StartSec, "sources": reserved(c), "refundPercent": c.RefundPercent,
-			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent,
+			"score": c.ScorePerComplete, "failPenalty": c.Health.FailPenalty, "faultPercent": c.Health.FaultPercent, "lossPerSec": c.Health.MaxLossPerSec,
 			"redisHit": c.Redis.Levels[0].Hit, "wsSpeed": c.WebSocket.SpeedPercent, "wsRate": c.WebSocket.RatePercent, "wsRevenue": c.WebSocket.RevenuePercent,
 			"storageWarn": c.Storage.WarnPercent, "storageSlow": c.Storage.SlowPercent},
 		"head": makeHead(s.sim, s.why), "nodes": nodes, "links": links, "moving": moving, "result": makeResult(s.sim)})
