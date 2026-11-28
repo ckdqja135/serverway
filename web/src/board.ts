@@ -734,12 +734,14 @@ export class Board {
   // 아직 예고 전이지만 클라이언트가 들어올 자리. 서버를 놓을 수 없으므로 처음부터 흐리게 보여 주고, 지을 때는 더 진하게 보인다.
   private reserved() {
     const g = this.ctx, { config, head } = this.game, a = head.area, nodes = [...this.game.nodes.values()]
-    g.strokeStyle = C.coral; g.lineWidth = 1.5; g.setLineDash([4, 5])
-    g.globalAlpha = this.ui.tool === 'connect' ? 0.3 : 0.65
+    const building = this.ui.tool !== 'connect' // 서버를 놓을 때는 피할 자리라 채워서 또렷하게
+    g.strokeStyle = g.fillStyle = C.coral; g.lineWidth = building ? 2.5 : 1.5; g.setLineDash([4, 5])
     for (const s of config.sources) {
       const taken = nodes.some((n) => n.x === s.x && n.y === s.y) || head.upcoming.some((u) => u.x === s.x && u.y === s.y)
       if (taken || s.x < a.x || s.y < a.y || s.x >= a.x + a.w || s.y >= a.y + a.h) continue
-      g.beginPath(); g.arc(this.sx(s.x), this.sy(s.y), this.S * 0.62, 0, 7); g.stroke()
+      g.beginPath(); g.arc(this.sx(s.x), this.sy(s.y), this.S * 0.62, 0, 7)
+      if (building) { g.globalAlpha = 0.18; g.fill() }
+      g.globalAlpha = building ? 0.95 : 0.3; g.stroke()
     }
     g.setLineDash([]); g.globalAlpha = 1
   }

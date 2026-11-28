@@ -107,7 +107,7 @@ function Remove({ g, what, refund, body, run, confirm, setConfirm }: { g: GameCl
   if (!confirm) return <button className="remove" disabled={!!g.head.over} onClick={() => setConfirm(true)}><Trash2 size={15} aria-hidden />철거 (환급 {refund})</button>
   return (
     <div className="confirm" role="alertdialog" aria-label="철거 확인">
-      <b>{what}를 철거할까요?</b><p>{body} 예산 {refund}을 돌려받습니다.</p>
+      <b><Trash2 size={16} aria-hidden />{what}를 철거할까요?</b><p>{body} 예산 {refund}을 돌려받습니다.</p>
       <div><button onClick={() => setConfirm(false)}>취소</button><button className="danger" autoFocus onClick={() => { run(); setConfirm(false) }}>철거</button></div>
     </div>
   )
